@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Job Posting Management</title>
+    <link rel="stylesheet" href="../css/special.css">
+</head>
+<body>
+
+<header class="topbar">
+    <div class="brand">Job Portal</div>
+
+    <nav>
+        <a href="#">Dashboard</a>
+        <a href="#">Profile</a>
+        <a href="#">Logout</a>
+    </nav>
+</header>
+
+<div class="page">
+
+    <h1>Job Posting Management</h1>
+
+    <p class="subtitle">
+        Manage all of your company's job postings.
+    </p>
+
+    <div class="search-bar">
+        <input type="text" placeholder="Search job title...">
+
+        <select class="btn btn-secondary">
+            <option>All Status</option>
+            <option>Active</option>
+            <option>Draft</option>
+            <option>Closed</option>
+        </select>
+
+        <button class="btn btn-primary">
+            + New Job
+        </button>
+    </div>
+
+    <div class="job-list">
+
+        <div class="job-card">
+
+            <div class="job-main">
+                <h3>Software Engineer</h3>
+
+                <div class="job-meta">
+                    Kuala Lumpur • Full Time
+                </div>
+
+                <span class="skill-tag">Java</span>
+                <span class="skill-tag">Spring Boot</span>
+                <span class="skill-tag">SQL</span>
+
+                <p class="status-msg success">
+                    Active • 18 Applications
+                </p>
+            </div>
+
+            <div>
+                <button class="btn btn-secondary">View</button>
+                <button class="btn btn-secondary">Edit</button>
+                <button class="btn btn-primary">Close</button>
+            </div>
+
+        </div>
+
+        <div class="job-card">
+
+            <div class="job-main">
+                <h3>UI/UX Designer</h3>
+
+                <div class="job-meta">
+                    Penang • Hybrid
+                </div>
+
+                <span class="skill-tag">Figma</span>
+                <span class="skill-tag">Adobe XD</span>
+
+                <p class="status-msg">
+                    Draft • Not Published
+                </p>
+            </div>
+
+            <div>
+                <button class="btn btn-secondary">Edit</button>
+                <button class="btn btn-primary">Publish</button>
+            </div>
+
+        </div>
+
+        <div class="job-card">
+
+            <div class="job-main">
+                <h3>Data Analyst</h3>
+
+                <div class="job-meta">
+                    Johor Bahru • Remote
+                </div>
+
+                <span class="skill-tag">Python</span>
+                <span class="skill-tag">Power BI</span>
+
+                <p class="status-msg error">
+                    Closed • 41 Applications
+                </p>
+            </div>
+
+            <div>
+                <button class="btn btn-secondary">View</button>
+                <button class="btn btn-secondary">Duplicate</button>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+</body>
+</html>
