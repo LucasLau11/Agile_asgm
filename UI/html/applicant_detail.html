@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<title>Applicant Details</title>
+
+<link rel="stylesheet" href="../css/style.css" />
+<link rel="stylesheet" href="../css/application.css" />
+
+</head>
+
+
+<body>
+
+
+<header class="topbar">
+
+<div class="brand">
+Job Portal
+</div>
+
+
+<nav>
+
+<a href="employer_applications.html">
+Applications
+</a>
+
+<a href="browse.html">
+Jobs
+</a>
+
+<a href="profile.html">
+Profile
+</a>
+
+</nav>
+
+
+</header>
+
+
+
+
+<div class="dev-user-bar">
+
+Acting as: Employer #1 — ABC Technologies
+
+<span style="opacity:0.75">
+(login stand-in for Sprint 1)
+</span>
+
+</div>
+
+
+
+
+
+<main class="page">
+
+
+<h1>
+Applicant Details
+</h1>
+
+
+<p class="subtitle">
+Review candidate information and update recruitment progress.
+</p>
+
+
+
+
+
+<div class="stage-box">
+
+
+
+
+
+<!-- Applicant Information -->
+
+
+<h2>
+John Tan
+</h2>
+
+
+<div class="application-meta">
+
+Applying for:
+<strong>Backend Engineer</strong>
+
+</div>
+
+
+<br>
+
+
+<p>
+
+Email:
+john.tan@email.com
+
+</p>
+
+
+<p>
+
+Experience:
+2 years Software Development Experience
+
+</p>
+
+
+
+
+<h3>
+Skills
+</h3>
+
+
+<span class="skill-tag">
+Python
+</span>
+
+
+<span class="skill-tag">
+FastAPI
+</span>
+
+
+<span class="skill-tag">
+SQL
+</span>
+
+
+
+
+
+
+
+<!-- Recruitment Timeline -->
+
+
+<h3>
+Recruitment Progress
+</h3>
+
+
+<div class="stage-timeline">
+
+
+<div class="stage-step active">
+
+<div class="stage-circle">
+1
+</div>
+
+<div class="stage-label">
+Applied
+</div>
+
+</div>
+
+
+
+<div class="stage-step active">
+
+<div class="stage-circle">
+2
+</div>
+
+<div class="stage-label">
+Screening
+</div>
+
+</div>
+
+
+
+<div class="stage-step">
+
+<div class="stage-circle">
+3
+</div>
+
+<div class="stage-label">
+Interview
+</div>
+
+</div>
+
+
+
+<div class="stage-step">
+
+<div class="stage-circle">
+4
+</div>
+
+<div class="stage-label">
+Offered
+</div>
+
+</div>
+
+
+
+<div class="stage-step">
+
+<div class="stage-circle">
+5
+</div>
+
+<div class="stage-label">
+Rejected
+</div>
+
+</div>
+
+
+</div>
+
+
+
+
+
+
+
+
+<!-- Update Stage -->
+
+
+<h3>
+Update Recruitment Stage
+</h3>
+
+
+<select class="stage-select">
+
+
+<option>
+Applied
+</option>
+
+
+<option selected>
+Screening
+</option>
+
+
+<option>
+Interview
+</option>
+
+
+<option>
+Offered
+</option>
+
+
+<option>
+Rejected
+</option>
+
+
+</select>
+
+
+
+
+
+
+
+<br><br>
+
+
+
+
+
+<h3>
+Employer Notes
+</h3>
+
+
+<textarea class="notes-box"
+placeholder="Add comments about this applicant..."></textarea>
+
+
+
+
+
+
+<br><br>
+
+
+
+<button class="btn btn-primary"
+onclick="updateStage()">
+
+Save Changes
+
+</button>
+
+
+
+
+
+</div>
+
+
+
+
+
+</main>
+
+
+
+
+<script>
+
+
+function updateStage(){
+
+alert(
+"Recruitment stage updated successfully!"
+);
+
+}
+
+
+</script>
+
+
+
+
+</body>
+
+</html>
