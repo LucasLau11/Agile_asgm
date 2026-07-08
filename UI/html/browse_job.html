@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Browse Jobs</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Job Portal</div>
+    <nav>
+      <a href="browse_demo.html">Browse Jobs</a>
+      <a href="profile_demo.html">My Profile</a>
+    </nav>
+  </header>
+  <div class="dev-user-bar">
+    Acting as: Seeker #1 — Aisha
+    <span style="opacity:0.75">(this bar is a real feature — a login stand-in for Sprint 1)</span>
+  </div>
+
+  <main class="page">
+    <h1>Browse jobs</h1>
+    <p class="subtitle">Search by keyword or filter by location to find relevant openings.</p>
+
+    <form class="search-bar" id="searchForm">
+      <input type="text" id="keywordInput" placeholder="Keyword (e.g. 'backend', 'designer')" />
+      <input type="text" id="locationInput" placeholder="Location (e.g. 'Penang', 'Remote')" />
+      <button type="submit" class="btn btn-primary">Search</button>
+    </form>
+
+    <div id="jobList" class="job-list"></div>
+  </main>
+
+  <script>
+    /*STATIC JOB POSTINGS*/
+    const MOCK_JOBS = [
+      {
+        id: 1,
+        title: "Backend Engineer",
+        location: "Penang, Malaysia",
+        skills_required: ["Python", "FastAPI", "SQL"],
+        credibility_score: 80,
+      },
+      {
+        id: 2,
+        title: "Frontend Developer",
+        location: "Remote",
+        skills_required: [],
+        credibility_score: 40,
+      },
+      {
+        id: 3,
+        title: "UI/UX Designer",
+        location: "Kuala Lumpur, Malaysia",
+        skills_required: ["Figma", "User Research"],
+        credibility_score: 65,
+      },
+    ];
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str ?? "";
+      return div.innerHTML;
+    }
+
+    function trustSealHtml(score) {
+      const lowClass = score < 50 ? "low" : "";
+      return `
+        <div class="trust-seal ${lowClass}" title="Credibility score">
+          <div class="score">${score}</div>
+          <div class="label">Trust</div>
+        </div>`;
+    }
+
+    function renderJobs(jobs) {
+      const jobListEl = document.getElementById("jobList");
+      if (jobs.length === 0) {
+        jobListEl.innerHTML = `<div class="empty-state">No jobs match that search.</div>`;
+        return;
+      }
+      jobListEl.innerHTML = jobs
+        .map(
+          (job) => `
+        <div class="job-card">
+          <div class="job-main">
+            <h3>${escapeHtml(job.title)}</h3>
+            <div class="job-meta">${escapeHtml(job.location || "Location not specified")}</div>
+            <div>
+              ${job.skills_required.map((s) => `<span class="skill-tag">${escapeHtml(s)}</span>`).join("") ||
+                `<span style="color:var(--ink-soft); font-size:0.85rem;">No skills listed</span>`}
+            </div>
+          </div>
+          ${trustSealHtml(job.credibility_score)}
+        </div>`
+        )
+        .join("");
+    }
+
+    document.getElementById("searchForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const keyword = document.getElementById("keywordInput").value.trim().toLowerCase();
+      const location = document.getElementById("locationInput").value.trim().toLowerCase();
+
+      const filtered = MOCK_JOBS.filter((job) => {
+        const matchesKeyword = !keyword || job.title.toLowerCase().includes(keyword);
+        const matchesLocation = !location || job.location.toLowerCase().includes(location);
+        return matchesKeyword && matchesLocation;
+      });
+      renderJobs(filtered);
+    });
+
+    renderJobs(MOCK_JOBS);
+  </script>
+</body>
+</html>
