@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Apply Job</title>
 
-  <link rel="stylesheet" href="../css/application.css" />
+  <link rel="stylesheet" href="/UI/css/application.css" />
 </head>
 
 <body>
@@ -100,8 +100,7 @@ Trust
 <!-- Application Form -->
 
 
-<form>
-
+<form action="/apply" method="POST" enctype="multipart/form-data">
 
 <div class="form-group">
 
@@ -109,9 +108,7 @@ Trust
 Cover Letter
 </label>
 
-
-<textarea placeholder="Explain why you are suitable for this position..."></textarea>
-
+<textarea name="cover_letter" placeholder="Explain why you are suitable..."></textarea>
 </div>
 
 
@@ -127,8 +124,7 @@ Upload Resume
 
 <div class="resume-upload">
 
-<input type="file">
-
+<input type="file" name="resume">
 <p>
 Upload your latest resume (PDF/DOC)
 </p>
@@ -180,22 +176,10 @@ Submit Application
 
 
 <script>
-
-
-document.querySelector("form")
-.addEventListener("submit", function(e){
-
-e.preventDefault();
-
-
-alert(
-"Application submitted successfully!"
-);
-
-
+document.querySelector("form").addEventListener("submit", function(e){
+  alert("Application submitted successfully! Sending to backend...");
+  // Without preventDefault(), the form will submit as normal right after you click OK
 });
-
-
 </script>
 
 
