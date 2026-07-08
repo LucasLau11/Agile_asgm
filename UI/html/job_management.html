@@ -26,23 +26,61 @@
     </p>
 
     <div class="search-bar">
-        <input type="text" placeholder="Search job title...">
+        <input type="text" id="searchBox" placeholder="Search job title...">
 
-        <select class="btn btn-secondary">
+        <select id="statusFilter" class="btn btn-secondary">
             <option>All Status</option>
             <option>Active</option>
             <option>Draft</option>
             <option>Closed</option>
         </select>
 
-        <button class="btn btn-primary">
-            + New Job
-        </button>
+        <button class="btn btn-primary" onclick="newJob()">+ New Job</button>
+        <script>
+            function newJob(){
+
+                const list = document.querySelector(".job-list");
+
+                list.innerHTML += `
+
+                <div class="job-card" data-status="draft">
+
+                    <div class="job-main">
+
+                        <h3>New Job</h3>
+
+                        <div class="job-meta">
+                            Unknown • Full Time
+                        </div>
+
+                        <p class="status-msg">
+                            Draft • Not Published
+                        </p>
+
+                    </div>
+
+                    <div>
+
+                        <button class="btn btn-secondary">Edit</button>
+
+                        <button class="btn btn-primary"
+                        onclick="publishJob(this)">
+                        Publish
+                        </button>
+
+                    </div>
+
+                </div>
+
+                `;
+
+            }
+            </script>
     </div>
 
     <div class="job-list">
 
-        <div class="job-card">
+<div class="job-card" data-status="active">
 
             <div class="job-main">
                 <h3>Software Engineer</h3>
@@ -62,13 +100,43 @@
 
             <div>
                 <button class="btn btn-secondary">View</button>
-                <button class="btn btn-secondary">Edit</button>
-                <button class="btn btn-primary">Close</button>
+                <button class="btn btn-secondary"onclick="editJob(this)">Edit</button>
+                <script>
+                function editJob(button){
+
+                const card = button.closest(".job-card");
+
+                    const title = prompt(
+                    "Job Title:",
+                        card.querySelector("h3").innerHTML
+                    );
+
+                    if(title){
+
+                        card.querySelector("h3").innerHTML = title;
+
+                    }
+
+                }
+                </script>
+                <button class="btn btn-primary" onclick="closeJob(this)">Close</button>
+                <script>
+                    function closeJob(button) {
+                    const card = button.closest(".job-card");
+
+                    card.dataset.status = "closed";
+
+                    card.querySelector(".status-msg").innerHTML = "Closed • No longer accepting applications";
+                    card.querySelector(".status-msg").className = "status-msg error";
+
+                    button.remove();
+                    }
+                </script>
             </div>
 
         </div>
 
-        <div class="job-card">
+        <div class="job-card" data-status="draft">
 
             <div class="job-main">
                 <h3>UI/UX Designer</h3>
@@ -87,12 +155,30 @@
 
             <div>
                 <button class="btn btn-secondary">Edit</button>
-                <button class="btn btn-primary">Publish</button>
+                <button class="btn btn-primary" onclick="publishJob(this)">Publish</button>
+                <script>
+                    function publishJob(button) {
+
+                        const card = button.closest(".job-card");
+
+                        card.dataset.status = "active";
+
+                        card.querySelector(".status-msg").innerHTML =
+                            "Active • 0 Applications";
+
+                        card.querySelector(".status-msg").className =
+                            "status-msg success";
+
+                        button.innerHTML = "Published";
+                        button.disabled = true;
+
+                        }
+                    </script>
             </div>
 
         </div>
 
-        <div class="job-card">
+        <div class="job-card" data-status="closed">
 
             <div class="job-main">
                 <h3>Data Analyst</h3>
@@ -110,8 +196,53 @@
             </div>
 
             <div>
-                <button class="btn btn-secondary">View</button>
-                <button class="btn btn-secondary">Duplicate</button>
+                <button class="btn btn-secondary" onclick="viewJob(this)">View</button>
+                <script>
+                function viewJob(button){
+
+                    const title =
+                        button.closest(".job-card")
+                        .querySelector("h3").innerHTML;
+
+                    document.querySelector(".page").innerHTML =
+                    `
+                    <h1>${title}</h1>
+
+                    <p>This is the job description.</p>
+
+                    <button class="btn btn-primary"
+                    onclick="location.reload()">
+                    Back
+                    </button>
+                    `;
+
+                }
+                </script>          
+                <button class="btn btn-secondary" onclick="duplicateJob(this)">Duplicate</button>
+                <script>
+                function duplicateJob(button){
+
+                    const card = button.closest(".job-card");
+
+                    const copy = card.cloneNode(true);
+
+                    copy.querySelector(".status-msg").innerHTML =
+                        "Draft • Not Published";
+
+                    copy.dataset.status = "draft";
+
+                    document.querySelector(".job-list").appendChild(copy);
+
+                }
+                </script>
+                <button class="btn btn-secondary" onclick="deleteJob(this)">Delete</button>
+                <script>
+                function deleteJob(button){
+
+                    button.closest(".job-card").remove();
+
+                }
+                </script>
             </div>
 
         </div>
