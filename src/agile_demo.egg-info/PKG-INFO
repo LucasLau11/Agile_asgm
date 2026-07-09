@@ -5,6 +5,8 @@ Summary: Teaching repo: Agile + Tests + CI/CD
 Requires-Python: >=3.11
 Requires-Dist: fastapi>=0.115
 Requires-Dist: uvicorn>=0.30
+Requires-Dist: sqlalchemy>=2.0
+Requires-Dist: python-multipart>=0.0.9
 Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
 Requires-Dist: pytest-cov; extra == "dev"

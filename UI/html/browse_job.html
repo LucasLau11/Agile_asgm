@@ -10,14 +10,11 @@
   <header class="topbar">
     <div class="brand">Job Portal</div>
     <nav>
-      <a href="browse_demo.html">Browse Jobs</a>
-      <a href="profile_demo.html">My Profile</a>
+      <a href="browse_job.html">Browse Jobs</a>
+      <a href="profile.html">My Profile</a>
     </nav>
   </header>
-  <div class="dev-user-bar">
-    Acting as: Seeker #1 — Aisha
-    <span style="opacity:0.75">(this bar is a real feature — a login stand-in for Sprint 1)</span>
-  </div>
+  <div class="dev-user-bar" id="devUserBar"></div>
 
   <main class="page">
     <h1>Browse jobs</h1>
@@ -29,60 +26,30 @@
       <button type="submit" class="btn btn-primary">Search</button>
     </form>
 
-    <div id="jobList" class="job-list"></div>
+    <div id="jobList" class="job-list">
+      <p class="subtitle">Loading jobs…</p>
+    </div>
   </main>
 
+  <script src="../js/api.js"></script>
   <script>
-    /*STATIC JOB POSTINGS*/
-    const MOCK_JOBS = [
-      {
-        id: 1,
-        title: "Backend Engineer",
-        location: "Penang, Malaysia",
-        skills_required: ["Python", "FastAPI", "SQL"],
-        credibility_score: 80,
-      },
-      {
-        id: 2,
-        title: "Frontend Developer",
-        location: "Remote",
-        skills_required: [],
-        credibility_score: 40,
-      },
-      {
-        id: 3,
-        title: "UI/UX Designer",
-        location: "Kuala Lumpur, Malaysia",
-        skills_required: ["Figma", "User Research"],
-        credibility_score: 65,
-      },
-    ];
+    renderDevUserBar("devUserBar");
 
-    function escapeHtml(str) {
-      const div = document.createElement("div");
-      div.textContent = str ?? "";
-      return div.innerHTML;
-    }
-
-    function trustSealHtml(score) {
-      const lowClass = score < 50 ? "low" : "";
-      return `
-        <div class="trust-seal ${lowClass}" title="Credibility score">
-          <div class="score">${score}</div>
-          <div class="label">Trust</div>
-        </div>`;
-    }
+    const jobListEl = document.getElementById("jobList");
 
     function renderJobs(jobs) {
-      const jobListEl = document.getElementById("jobList");
       if (jobs.length === 0) {
-        jobListEl.innerHTML = `<div class="empty-state">No jobs match that search.</div>`;
+        jobListEl.innerHTML = `
+          <div class="empty-state">
+            No jobs match that search. Try a different keyword or clear the location filter.
+          </div>`;
         return;
       }
+
       jobListEl.innerHTML = jobs
         .map(
           (job) => `
-        <div class="job-card">
+        <a class="job-card" href="job_detail.html?id=${job.id}">
           <div class="job-main">
             <h3>${escapeHtml(job.title)}</h3>
             <div class="job-meta">${escapeHtml(job.location || "Location not specified")}</div>
@@ -92,25 +59,30 @@
             </div>
           </div>
           ${trustSealHtml(job.credibility_score)}
-        </div>`
+        </a>`
         )
         .join("");
     }
 
+    async function loadJobs(filters = {}) {
+      jobListEl.innerHTML = `<p class="subtitle">Loading jobs…</p>`;
+      try {
+        const jobs = await fetchJobs(filters);
+        renderJobs(jobs);
+      } catch (err) {
+        jobListEl.innerHTML = `<p class="status-msg error">Couldn't load jobs: ${escapeHtml(err.message)}. Is the FastAPI server running?</p>`;
+      }
+    }
+
     document.getElementById("searchForm").addEventListener("submit", (e) => {
       e.preventDefault();
-      const keyword = document.getElementById("keywordInput").value.trim().toLowerCase();
-      const location = document.getElementById("locationInput").value.trim().toLowerCase();
-
-      const filtered = MOCK_JOBS.filter((job) => {
-        const matchesKeyword = !keyword || job.title.toLowerCase().includes(keyword);
-        const matchesLocation = !location || job.location.toLowerCase().includes(location);
-        return matchesKeyword && matchesLocation;
+      loadJobs({
+        keyword: document.getElementById("keywordInput").value.trim(),
+        location: document.getElementById("locationInput").value.trim(),
       });
-      renderJobs(filtered);
     });
 
-    renderJobs(MOCK_JOBS);
+    loadJobs();
   </script>
 </body>
 </html>

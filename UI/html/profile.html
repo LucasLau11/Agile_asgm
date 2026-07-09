@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Profile</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Job Portal</div>
+    <nav>
+      <a href="browse_job.html">Browse Jobs</a>
+      <a href="profile.html">My Profile</a>
+    </nav>
+  </header>
+  <div class="dev-user-bar" id="devUserBar"></div>
+
+  <main class="page">
+    <h1>My profile</h1>
+    <p class="subtitle">Keep your resume and skills up to date so job matching works well.</p>
+
+    <section class="profile-section">
+      <h2>Skills</h2>
+      <div class="skills-editor" id="skillsEditor"></div>
+      <form id="addSkillForm" style="display:flex; gap:8px;">
+        <input type="text" id="newSkillInput" placeholder="Add a skill (e.g. 'Python')"
+               style="flex:1; padding:9px 12px; border:1px solid var(--line); border-radius:8px;" />
+        <button type="submit" class="btn btn-secondary">Add</button>
+      </form>
+      <p class="status-msg" id="skillsStatus"></p>
+    </section>
+
+    <section class="profile-section">
+      <h2>Resume</h2>
+      <label class="resume-drop" for="resumeInput" style="display:block; cursor:pointer;">
+        Click to choose a PDF or Word document (max 5&nbsp;MB)
+      </label>
+      <input type="file" id="resumeInput" accept=".pdf,.doc,.docx" style="display:none" />
+      <p class="status-msg" id="resumeStatus"></p>
+      <div id="resumeCurrent"></div>
+    </section>
+  </main>
+
+  <!-- PDF preview modal (US-03 enhancement: preview uploaded resume content) -->
+  <div id="previewOverlay" class="preview-overlay" style="display:none;">
+    <div class="preview-modal">
+      <div class="preview-modal-header">
+        <span id="previewFilename"></span>
+        <button type="button" id="previewCloseBtn" class="preview-close" title="Close preview">&times;</button>
+      </div>
+      <iframe id="previewFrame" class="preview-iframe" title="Resume preview"></iframe>
+    </div>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script>
+    renderDevUserBar("devUserBar");
+    const seekerId = getCurrentSeekerId();
+
+    let currentSkills = [];
+
+    function renderSkills() {
+      const editor = document.getElementById("skillsEditor");
+      if (currentSkills.length === 0) {
+        editor.innerHTML = `<span class="subtitle" style="font-size:0.88rem">No skills added yet.</span>`;
+        return;
+      }
+      editor.innerHTML = currentSkills
+        .map(
+          (skill, i) => `
+        <span class="skill-chip">
+          ${escapeHtml(skill)}
+          <button type="button" data-index="${i}" title="Remove skill">&times;</button>
+        </span>`
+        )
+        .join("");
+
+      editor.querySelectorAll("button[data-index]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          currentSkills.splice(Number(btn.dataset.index), 1);
+          saveSkills();
+        });
+      });
+    }
+
+    async function saveSkills() {
+      const statusEl = document.getElementById("skillsStatus");
+      try {
+        const updated = await updateSeekerSkills(seekerId, currentSkills);
+        currentSkills = updated.skills;
+        renderSkills();
+        statusEl.textContent = "Skills saved.";
+        statusEl.className = "status-msg success";
+      } catch (err) {
+        statusEl.textContent = `Couldn't save skills: ${err.message}`;
+        statusEl.className = "status-msg error";
+      }
+    }
+
+    function renderResumeCurrent(profile) {
+      const el = document.getElementById("resumeCurrent");
+      if (!profile.resume_filename) {
+        el.innerHTML = `<p class="subtitle" style="font-size:0.88rem; margin-top:12px;">No resume uploaded yet.</p>`;
+        return;
+      }
+
+      const filename = profile.resume_filename;
+      const extension = (filename.split(".").pop() || "").toUpperCase();
+      const typeLabel = extension === "PDF" ? "PDF" : extension === "DOC" || extension === "DOCX" ? "DOC" : extension;
+      const isPdf = extension === "PDF";
+      const actionHint = isPdf ? "Click to preview" : "Click to download";
+
+      el.innerHTML = `
+        <div class="file-card-v2" id="fileCard" role="button" tabindex="0" title="${actionHint}">
+          <div class="file-thumb">
+            <div class="line" style="top:8px;"></div>
+            <div class="line short" style="top:14px;"></div>
+            <div class="line" style="top:20px;"></div>
+            <div class="line short" style="top:26px;"></div>
+            <div class="line accent" style="top:36px;"></div>
+            <div class="line accent short" style="top:42px;"></div>
+            <div class="line accent" style="top:48px; right:18px;"></div>
+            <div class="badge">${escapeHtml(typeLabel)}</div>
+          </div>
+          <div class="file-info">
+            <div class="file-name">${escapeHtml(filename)}</div>
+            <div class="file-type-meta">${escapeHtml(typeLabel)} &nbsp;&bull;&nbsp; ${actionHint}</div>
+          </div>
+          <div class="file-check-badge" title="Stored in the database">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+              <path d="M20 6 9 17l-5-5"/>
+            </svg>
+          </div>
+        </div>`;
+
+      const cardEl = document.getElementById("fileCard");
+      cardEl.addEventListener("click", () => {
+        if (isPdf) {
+          openPreview(profile.resume_url, filename);
+        } else {
+          // Browsers can't render Word docs inline, so just open/download it.
+          window.open(profile.resume_url, "_blank");
+        }
+      });
+      cardEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") cardEl.click();
+      });
+    }
+
+    function openPreview(url, filename) {
+      document.getElementById("previewFilename").textContent = filename;
+      document.getElementById("previewFrame").src = url;
+      document.getElementById("previewOverlay").style.display = "flex";
+    }
+
+    function closePreview() {
+      document.getElementById("previewOverlay").style.display = "none";
+      document.getElementById("previewFrame").src = ""; // stop loading/free memory
+    }
+
+    document.getElementById("previewCloseBtn").addEventListener("click", closePreview);
+    document.getElementById("previewOverlay").addEventListener("click", (e) => {
+      if (e.target.id === "previewOverlay") closePreview(); // click outside modal closes it
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closePreview();
+    });
+
+    async function loadProfile() {
+      try {
+        const profile = await fetchSeekerProfile(seekerId);
+        currentSkills = profile.skills;
+        renderSkills();
+        renderResumeCurrent(profile);
+      } catch (err) {
+        document.getElementById("skillsStatus").textContent = `Couldn't load profile: ${err.message}`;
+        document.getElementById("skillsStatus").className = "status-msg error";
+      }
+    }
+
+    document.getElementById("addSkillForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const input = document.getElementById("newSkillInput");
+      const value = input.value.trim();
+      if (value && !currentSkills.includes(value)) {
+        currentSkills.push(value);
+        input.value = "";
+        saveSkills();
+      }
+    });
+
+    document.getElementById("resumeInput").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const statusEl = document.getElementById("resumeStatus");
+      statusEl.textContent = "Uploading…";
+      statusEl.className = "status-msg";
+      try {
+        const profile = await uploadResume(seekerId, file);
+        renderResumeCurrent(profile);
+        statusEl.textContent = "Resume uploaded.";
+        statusEl.className = "status-msg success";
+      } catch (err) {
+        statusEl.textContent = `Upload failed: ${err.message}`;
+        statusEl.className = "status-msg error";
+      }
+    });
+
+    loadProfile();
+  </script>
+</body>
+</html>

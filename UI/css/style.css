@@ -283,6 +283,92 @@ h1 {
   margin-top: 10px;
 }
 
+.file-card-v2 {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 14px;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.file-card-v2:hover, .file-card-v2:focus {
+  border-color: var(--trust);
+  outline: none;
+}
+
+.file-thumb {
+  width: 52px;
+  height: 68px;
+  flex-shrink: 0;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  position: relative;
+  overflow: hidden;
+}
+
+.file-thumb .line {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  background: var(--line);
+}
+
+.file-thumb .line.short { right: 16px; }
+.file-thumb .line.accent { background: var(--trust-soft); }
+
+.file-thumb .badge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: var(--trust);
+  color: var(--paper-raised);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.file-card-v2 .file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-card-v2 .file-name {
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 0.88rem;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-card-v2 .file-type-meta {
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  margin-top: 3px;
+}
+
+.file-check-badge {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--trust);
+  color: var(--paper-raised);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .empty-state {
   text-align: center;
   padding: 60px 20px;
@@ -300,4 +386,55 @@ h1 {
   .topbar, .dev-user-bar { padding: 14px 18px; }
   .page { padding: 28px 16px 60px; }
   .job-card { flex-direction: column; }
+}
+
+/* ---------- Resume preview modal ---------- */
+
+.preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 33, 61, 0.55);
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+}
+
+.preview-modal {
+  background: var(--paper-raised);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 760px;
+  height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.preview-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+.preview-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--ink-soft);
+  cursor: pointer;
+  padding: 0 4px;
+}
+.preview-close:hover { color: var(--ink); }
+
+.preview-iframe {
+  flex: 1;
+  border: none;
+  width: 100%;
 }
