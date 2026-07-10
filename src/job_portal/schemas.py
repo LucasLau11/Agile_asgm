@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 
+
 class JobOut(BaseModel):
     """Job data as returned to job seekers (Browse / Search / Detail pages)."""
 

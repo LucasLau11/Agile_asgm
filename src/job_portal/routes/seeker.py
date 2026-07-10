@@ -10,6 +10,7 @@ Covers:
   US-22  Maintain skill profile
 
   
+  
 Sprint 1 extension: advanced filters (state, salary, job type), positions
 remaining display, resume/skill-based job recommendations, and a fuller
 seeker profile (personal info + work experience + education).
