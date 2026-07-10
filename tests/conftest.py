@@ -7,7 +7,6 @@ and dropped after every test so tests stay independent (mirrors the
 `reset_db()` pattern used in the tutor's demo repo).
 """
 
-
 import os
 
 os.environ["DATABASE_URL"] = "sqlite:///./test_job_portal.db"

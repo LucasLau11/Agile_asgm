@@ -4,114 +4,189 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Browse Jobs</title>
-  <link rel="stylesheet" href="/UI/css/style.css" />
+  <link rel="stylesheet" href="../css/style.css" />
 </head>
-
 <body>
   <header class="topbar">
     <div class="brand">Job Portal</div>
     <nav>
-      <a href="browse_demo.html">Browse Jobs</a>
-      <a href="profile_demo.html">My Profile</a>
+      <a href="browse_job.html">Browse Jobs</a>
+      <a href="profile.html">My Profile</a>
     </nav>
   </header>
-  <div class="dev-user-bar">
-    Acting as: Seeker #1 — Aisha
-    <span style="opacity:0.75">(this bar is a real feature — a login stand-in for Sprint 1)</span>
-  </div>
+  <div class="dev-user-bar" id="devUserBar"></div>
 
   <main class="page">
     <h1>Browse jobs</h1>
-    <p class="subtitle">Search by keyword or filter by location to find relevant openings.</p>
+    <p class="subtitle">Search by keyword, or use advanced filters to narrow things down.</p>
 
-    <form class="search-bar" id="searchForm">
-      <input type="text" id="keywordInput" placeholder="Keyword (e.g. 'backend', 'designer')" />
-      <input type="text" id="locationInput" placeholder="Location (e.g. 'Penang', 'Remote')" />
-      <button type="submit" class="btn btn-primary">Search</button>
+    <form id="searchForm">
+      <div class="search-bar">
+        <input type="text" id="keywordInput" placeholder="Keyword (e.g. 'backend', 'designer')" />
+        <button type="button" class="btn btn-secondary" id="toggleFiltersBtn">Advanced filters</button>
+        <button type="submit" class="btn btn-primary">Search</button>
+      </div>
+
+      <div id="advancedFilters" class="filter-panel" style="display:none;">
+        <div class="filter-row">
+          <div class="filter-field">
+            <label for="stateInput">State / region</label>
+            <select id="stateInput">
+              <option value="">Any state</option>
+            </select>
+          </div>
+          <div class="filter-field">
+            <label for="jobTypeInput">Job type</label>
+            <select id="jobTypeInput">
+              <option value="">Any type</option>
+            </select>
+          </div>
+        </div>
+        <div class="filter-row">
+          <div class="filter-field">
+            <label for="salaryMinInput">Min salary (RM/month)</label>
+            <input type="number" id="salaryMinInput" placeholder="e.g. 3000" min="0" />
+          </div>
+          <div class="filter-field">
+            <label for="salaryMaxInput">Max salary (RM/month)</label>
+            <input type="number" id="salaryMaxInput" placeholder="e.g. 8000" min="0" />
+          </div>
+        </div>
+        <button type="button" class="btn btn-secondary" id="clearFiltersBtn">Clear filters</button>
+      </div>
     </form>
 
-    <div id="jobList" class="job-list"></div>
+    <section id="recommendedSection" style="display:none; margin-bottom:32px;">
+      <h2 class="section-heading">Recommended for you</h2>
+      <p class="subtitle" style="margin-bottom:14px;">Based on the skills saved in your profile.</p>
+      <div id="recommendedList" class="job-list"></div>
+    </section>
+
+    <h2 class="section-heading" id="allJobsHeading" style="display:none;">All jobs</h2>
+    <div id="jobList" class="job-list">
+      <p class="subtitle">Loading jobs…</p>
+    </div>
   </main>
 
+  <script src="../js/api.js"></script>
   <script>
-    /*STATIC JOB POSTINGS*/
-    const MOCK_JOBS = [
-      {
-        id: 1,
-        title: "Backend Engineer",
-        location: "Penang, Malaysia",
-        skills_required: ["Python", "FastAPI", "SQL"],
-        credibility_score: 80,
-      },
-      {
-        id: 2,
-        title: "Frontend Developer",
-        location: "Remote",
-        skills_required: [],
-        credibility_score: 40,
-      },
-      {
-        id: 3,
-        title: "UI/UX Designer",
-        location: "Kuala Lumpur, Malaysia",
-        skills_required: ["Figma", "User Research"],
-        credibility_score: 65,
-      },
-    ];
+    renderDevUserBar("devUserBar");
+    const seekerId = getCurrentSeekerId();
 
-    function escapeHtml(str) {
-      const div = document.createElement("div");
-      div.textContent = str ?? "";
-      return div.innerHTML;
+    // Populate the state and job type dropdowns from the shared constants in api.js
+    const stateSelect = document.getElementById("stateInput");
+    MALAYSIA_STATES.forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = s;
+      stateSelect.appendChild(opt);
+    });
+    const jobTypeSelect = document.getElementById("jobTypeInput");
+    JOB_TYPES.forEach((t) => {
+      const opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = t;
+      jobTypeSelect.appendChild(opt);
+    });
+
+    document.getElementById("toggleFiltersBtn").addEventListener("click", () => {
+      const panel = document.getElementById("advancedFilters");
+      panel.style.display = panel.style.display === "none" ? "block" : "none";
+    });
+
+    document.getElementById("clearFiltersBtn").addEventListener("click", () => {
+      document.getElementById("stateInput").value = "";
+      document.getElementById("jobTypeInput").value = "";
+      document.getElementById("salaryMinInput").value = "";
+      document.getElementById("salaryMaxInput").value = "";
+      loadJobs(currentFilters());
+    });
+
+    function currentFilters() {
+      return {
+        keyword: document.getElementById("keywordInput").value.trim(),
+        state: document.getElementById("stateInput").value,
+        jobType: document.getElementById("jobTypeInput").value,
+        salaryMin: document.getElementById("salaryMinInput").value,
+        salaryMax: document.getElementById("salaryMaxInput").value,
+      };
     }
 
-    function trustSealHtml(score) {
-      const lowClass = score < 50 ? "low" : "";
+    function jobCardHtml(job, { showMatch = false } = {}) {
+      const matchBadge =
+        showMatch && job.match_percentage != null
+          ? `<span class="match-badge">${job.match_percentage}% match</span>`
+          : "";
+      const spotsLabel =
+        job.positions_remaining === 0
+          ? `<span class="spots-tag full">No spots left</span>`
+          : `<span class="spots-tag">${job.positions_remaining} of ${job.positions_available} spots open</span>`;
+
       return `
-        <div class="trust-seal ${lowClass}" title="Credibility score">
-          <div class="score">${score}</div>
-          <div class="label">Trust</div>
-        </div>`;
-    }
-
-    function renderJobs(jobs) {
-      const jobListEl = document.getElementById("jobList");
-      if (jobs.length === 0) {
-        jobListEl.innerHTML = `<div class="empty-state">No jobs match that search.</div>`;
-        return;
-      }
-      jobListEl.innerHTML = jobs
-        .map(
-          (job) => `
-        <div class="job-card">
+        <a class="job-card" href="job_detail.html?id=${job.id}">
           <div class="job-main">
-            <h3>${escapeHtml(job.title)}</h3>
-            <div class="job-meta">${escapeHtml(job.location || "Location not specified")}</div>
+            <h3>${escapeHtml(job.title)} ${matchBadge}</h3>
+            <div class="job-meta">
+              ${escapeHtml(job.location || "Location not specified")}
+              &nbsp;•&nbsp; ${escapeHtml(job.job_type || "Full-time")}
+              &nbsp;•&nbsp; ${escapeHtml(formatSalary(job.salary_min, job.salary_max))}
+            </div>
+            <div style="margin-bottom:6px;">${spotsLabel}</div>
             <div>
               ${job.skills_required.map((s) => `<span class="skill-tag">${escapeHtml(s)}</span>`).join("") ||
                 `<span style="color:var(--ink-soft); font-size:0.85rem;">No skills listed</span>`}
             </div>
           </div>
           ${trustSealHtml(job.credibility_score)}
-        </div>`
-        )
-        .join("");
+        </a>`;
+    }
+
+    function renderJobs(jobs) {
+      const jobListEl = document.getElementById("jobList");
+      if (jobs.length === 0) {
+        jobListEl.innerHTML = `
+          <div class="empty-state">
+            No jobs match that search. Try different filters or clear them.
+          </div>`;
+        return;
+      }
+      jobListEl.innerHTML = jobs.map((job) => jobCardHtml(job)).join("");
+    }
+
+    async function loadJobs(filters = {}) {
+      const jobListEl = document.getElementById("jobList");
+      jobListEl.innerHTML = `<p class="subtitle">Loading jobs…</p>`;
+      try {
+        const jobs = await fetchJobs(filters);
+        renderJobs(jobs);
+      } catch (err) {
+        jobListEl.innerHTML = `<p class="status-msg error">Couldn't load jobs: ${escapeHtml(err.message)}. Is the FastAPI server running?</p>`;
+      }
+    }
+
+    async function loadRecommended() {
+      try {
+        const jobs = await fetchRecommendedJobs(seekerId);
+        if (jobs.length === 0) return; // section stays hidden — no skills saved, or no matches
+        document.getElementById("recommendedSection").style.display = "block";
+        document.getElementById("allJobsHeading").style.display = "block";
+        document.getElementById("recommendedList").innerHTML = jobs
+          .map((job) => jobCardHtml(job, { showMatch: true }))
+          .join("");
+      } catch (err) {
+        // Recommendations are a bonus feature — fail silently rather than
+        // blocking the whole page if this one call has trouble.
+        console.warn("Couldn't load recommended jobs:", err.message);
+      }
     }
 
     document.getElementById("searchForm").addEventListener("submit", (e) => {
       e.preventDefault();
-      const keyword = document.getElementById("keywordInput").value.trim().toLowerCase();
-      const location = document.getElementById("locationInput").value.trim().toLowerCase();
-
-      const filtered = MOCK_JOBS.filter((job) => {
-        const matchesKeyword = !keyword || job.title.toLowerCase().includes(keyword);
-        const matchesLocation = !location || job.location.toLowerCase().includes(location);
-        return matchesKeyword && matchesLocation;
-      });
-      renderJobs(filtered);
+      loadJobs(currentFilters());
     });
 
-    renderJobs(MOCK_JOBS);
+    loadJobs();
+    loadRecommended();
   </script>
 </body>
 </html>

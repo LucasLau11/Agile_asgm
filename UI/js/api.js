@@ -85,7 +85,6 @@ function fetchJobs({ keyword = "", location = "", state = "", jobType = "", sala
   return apiFetch(`/api/jobs${query ? `?${query}` : ""}`);
 }
 
-
 function fetchRecommendedJobs(seekerId) {
   return apiFetch(`/api/jobs/recommended?seeker_id=${seekerId}`);
 }

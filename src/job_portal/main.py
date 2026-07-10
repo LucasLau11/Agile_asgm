@@ -6,7 +6,6 @@ too, following the same pattern as `seeker_router` below. Please only add
 your own line — don't reformat this file when merging branches.
 """
 
-
 import os
 
 from fastapi import FastAPI

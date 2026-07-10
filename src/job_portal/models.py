@@ -16,7 +16,6 @@ and "spots remaining" display on the seeker side. Teammate A's create/edit
 job posting form should be updated to let employers set these too.
 """
 
-
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text

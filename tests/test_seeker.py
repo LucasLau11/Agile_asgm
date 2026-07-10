@@ -8,8 +8,6 @@ cases — mirrors the "basic + negative + parametrized" structure from
 tests/test_acceptance_items.py in the teaching template.
 """
 
-
-
 import io
 
 from job_portal.models import Job

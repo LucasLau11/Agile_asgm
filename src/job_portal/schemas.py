@@ -9,8 +9,6 @@ from pydantic import BaseModel, ConfigDict
 # ---------- Job (read-only from Teammate B's side) ----------
 
 
-
-
 class JobOut(BaseModel):
     """Job data as returned to job seekers (Browse / Search / Detail pages)."""
 

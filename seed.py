@@ -11,7 +11,6 @@ Run from the repo root (the folder that contains src/, UI/, pyproject.toml):
 Safe to re-run — it clears existing jobs/profiles first.
 """
 
-
 import sys
 
 sys.path.insert(0, "src")
