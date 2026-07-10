@@ -1,234 +1,140 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
   <title>My Applications</title>
-
-  <link rel="stylesheet" href="/UI/css/application.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/application.css" />
 </head>
-
-
 <body>
 
+  <header class="topbar">
+    <div class="brand">Job Portal</div>
+    <nav>
+      <a href="browse_job.html">Browse Jobs</a>
+      <a href="my_application.html" class="active">My Applications</a>
+      <a href="notifications.html">Notifications</a>
+      <a href="profile.html">Profile</a>
+    </nav>
+  </header>
 
-<header class="topbar">
+  <div class="dev-user-bar" id=\"devUserBar\"></div>
 
-  <div class="brand">
-    Job Portal
-  </div>
+  <main class="page">
+    <h1>My Applications</h1>
+    <p class="subtitle">Track the progress of your submitted job applications.</p>
 
-
-  <nav>
-    <a href="browse.html">
-      Browse Jobs
-    </a>
-
-    <a href="my_applications.html">
-      My Applications
-    </a>
-
-    <a href="notifications.html">
-      Notifications
-    </a>
-
-    <a href="profile.html">
-      Profile
-    </a>
-  </nav>
-
-
-</header>
-
-
-
-<div class="dev-user-bar">
-
-  Acting as: Seeker #1 — Aisha
-
-  <span style="opacity:0.75">
-    (login stand-in for Sprint 1)
-  </span>
-
-</div>
-
-
-
-
-<main class="page">
-
-
-<h1>
-My Applications
-</h1>
-
-
-<p class="subtitle">
-Track the progress of your submitted job applications.
-</p>
-
-
-
-
-<div class="application-list">
-  {% for app in applications %}
-  <div class="application-card">
-    <div class="application-main">
-      <h3>{{ app.job_title }}</h3>
-      <div class="application-meta">{{ app.company }}</div>
-      <div class="application-meta">Applied on: {{ app.applied_date }}</div>
-      <div>
-        {% for skill in app.skills %}
-        <span class="skill-tag">{{ skill }}</span>
-        {% endfor %}
-      </div>
+    <div class="application-list" id="applicationList">
+      <p class="subtitle">Loading your applications...</p>
     </div>
-    <div>
-      <span class="application-status 
-        {% if app.status == 'Applied' %}status-applied
-        {% elif app.status == 'Screening' %}status-screening
-        {% elif app.status == 'Interview' %}status-interview
-        {% elif app.status == 'Rejected' %}status-rejected
-        {% endif %}">
-        {{ app.status }}
-      </span>
-    </div>
-  </div>
-  {% endfor %}
-</div>
-
-
-
-
-
-
-<!-- Application 2 -->
-
-<div class="application-card">
-
-
-<div class="application-main">
-
-
-<h3>
-Frontend Developer
-</h3>
-
-
-<div class="application-meta">
-XYZ Solutions
-</div>
-
-
-<div class="application-meta">
-Applied on: 8 July 2026
-</div>
-
-
-<div>
-
-<span class="skill-tag">
-React
-</span>
-
-<span class="skill-tag">
-JavaScript
-</span>
-
-</div>
-
-
-</div>
-
-
-
-<div>
-
-<span class="application-status status-interview">
-
-Interview
-
-</span>
-
-</div>
-
-
-</div>
-
-
-
-
-
-
-
-<!-- Application 3 -->
-
-<div class="application-card">
-
-
-<div class="application-main">
-
-
-<h3>
-UI/UX Designer
-</h3>
-
-
-<div class="application-meta">
-Creative Studio
-</div>
-
-
-<div class="application-meta">
-Applied on: 5 July 2026
-</div>
-
-
-<div>
-
-<span class="skill-tag">
-Figma
-</span>
-
-<span class="skill-tag">
-Wireframe
-</span>
-
-</div>
-
-
-</div>
-
-
-
-<div>
-
-<span class="application-status status-rejected">
-
-Rejected
-
-</span>
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-
-</div>
-
-
-
-</main>
-
-
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script>
+    // Initialize user bar login mock setup just like browse_job.html
+    const seekerId = 1; 
+    if (typeof renderDevUserBar === "function") {
+      renderDevUserBar("devUserBar");
+    } else {
+      document.getElementById("devUserBar").innerHTML = `
+        Acting as: Seeker #${seekerId} — Aisha 
+        <span style="opacity:0.75">(login stand-in for Sprint 1)</span>
+      `;
+    }
+
+    // Helper to safely prevent HTML injection layout breakage
+    function escapeHtml(str) {
+      if (!str) return "";
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // Generate HTML for an individual application card dynamically
+    function applicationCardHtml(app) {
+      // Determine background color modifier depending on application workflow status
+      let statusClass = "status-applied";
+      const status = app.status || "Applied";
+      
+      if (status === "Screening") statusClass = "status-screening";
+      else if (status === "Interview") statusClass = "status-interview";
+      else if (status === "Rejected") statusClass = "status-rejected";
+
+      // Handle raw skill csv strings or array types safely
+      let skillsHtml = "";
+      if (app.skills) {
+        const skillsArray = Array.isArray(app.skills) ? app.skills : app.skills.split(",");
+        skillsHtml = skillsArray
+          .map(skill => `<span class="skill-tag">${escapeHtml(skill.trim())}</span>`)
+          .join("");
+      }
+
+      return `
+        <div class="application-card">
+          <div class="application-main">
+            <h3>${escapeHtml(app.job_title || "Job Title Not Specified")}</h3>
+            <div class="application-meta">${escapeHtml(app.company || "Company Profile")}</div>
+            <div class="application-meta">Applied on: ${escapeHtml(app.applied_date)}</div>
+            <div style="margin-top: 8px;">
+              ${skillsHtml}
+            </div>
+          </div>
+          <div>
+            <span class="application-status ${statusClass}">
+              ${escapeHtml(status)}
+            </span>
+          </div>
+        </div>
+      `;
+    }
+
+    // Fetch records via async API routing and update view content area
+    async function loadApplications() {
+      const listEl = document.getElementById("applicationList");
+      try {
+        // Replace with your real endpoints e.g. await fetchUserApplications(seekerId)
+        let applications = [];
+        
+        if (typeof fetchUserApplications === "function") {
+          applications = await fetchUserApplications(seekerId);
+        } else {
+          // Fallback mock fetch placeholder call
+          const response = await fetch(`/api/applications?seeker_id=${seekerId}`);
+          if (response.ok) {
+            applications = await response.json();
+          } else {
+            throw new Error("Failed to pull database entries");
+          }
+        }
+
+        if (applications.length === 0) {
+          listEl.innerHTML = `
+            <p class="subtitle" style="text-align: center; color: #777; margin-top: 30px;">
+              You haven't submitted any job applications yet.
+            </p>
+          `;
+          return;
+        }
+
+        // Render cards into the application-list element container
+        listEl.innerHTML = applications.map(app => applicationCardHtml(app)).join("");
+
+      } catch (err) {
+        console.error(err);
+        listEl.innerHTML = `
+          <p class="status-msg error">
+            Couldn't load applications: ${escapeHtml(err.message)}. Is the FastAPI server running?
+          </p>
+        `;
+      }
+    }
+
+    // Load applications immediately on page boot load
+    document.addEventListener("DOMContentLoaded", loadApplications);
+  </script>
 </body>
-
 </html>

@@ -1,0 +1,37 @@
+<section class="profile-section" style="margin-top:25px;">
+  <h2>My Submitted Applications</h2>
+  {% if not applications %}
+    <p class="subtitle">You haven't submitted any job applications yet.</p>
+  {% else %}
+    <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 15px;">
+      {% for app in applications %}
+      <div style="border: 1px solid #e0e0e0; padding: 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; background-color: #fff;">
+        <div>
+          <h3 style="margin: 0 0 5px 0; font-size: 1.1rem; color: #333;">{{ app.job_title }}</h3>
+          <div style="font-size: 0.85rem; color: #666; margin-bottom: 8px;">{{ app.company_name }} • Applied on: {{ app.applied_date }}</div>
+          <div>
+            {% for skill in app.skills %}
+            <span style="background-color: #f0f4f8; color: #1e4e8c; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; margin-right: 5px; display: inline-block;">{{ skill }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div>
+  {% if app.status == 'Applied' %}
+    {% set status_style = "padding: 5px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; background-color: #e3f2fd; color: #0d47a1;" %}
+  {% elif app.status == 'Screening' %}
+    {% set status_style = "padding: 5px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; background-color: #fff3e0; color: #e65100;" %}
+  {% elif app.status == 'Interview' %}
+    {% set status_style = "padding: 5px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; background-color: #e8f5e9; color: #1b5e20;" %}
+  {% else %}
+    {% set status_style = "padding: 5px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; background-color: #ffebee; color: #c62828;" %}
+  {% endif %}
+
+  <span class="application-status" {{ ('style="' ~ status_style ~ '"') | safe }}>
+    {{ app.status }}
+  </span>
+</div>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>

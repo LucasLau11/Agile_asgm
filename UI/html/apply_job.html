@@ -1,188 +1,45 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Apply Job</title>
-
-  <link rel="stylesheet" href="/UI/css/application.css" />
-</head>
-
-<body>
-
-<header class="topbar">
-  <div class="brand">Job Portal</div>
-
-  <nav>
-    <a href="browse_job.html">Browse Jobs</a>
-    <a href="my_application.html">My Applications</a>
-    <a href="notifications.html">Notifications</a>
-  </nav>
-</header>
-
-
-<div class="dev-user-bar">
-  Acting as: Seeker #1 — Aisha
-  <span style="opacity:0.75">
-    (login stand-in for Sprint 1)
-  </span>
-</div>
-
-
-
 <main class="page">
-
-<h1>Apply for Job</h1>
-
-<p class="subtitle">
-Submit your application for the selected vacancy.
-</p>
-
-
-
-<div class="apply-container">
-
-
-<!-- Job Information -->
-
-<section class="detail-header">
-
-<div>
-
-<h2 class="detail-title">
-Backend Engineer
-</h2>
-
-
-<div class="job-meta">
-ABC Technologies · Penang, Malaysia
-</div>
-
-
-<div>
-
-<span class="skill-tag">
-Python
-</span>
-
-<span class="skill-tag">
-FastAPI
-</span>
-
-<span class="skill-tag">
-SQL
-</span>
-
-</div>
-
-
-</div>
-
-
-<div class="trust-seal">
-
-<div class="score">
-80
-</div>
-
-<div class="label">
-Trust
-</div>
-
-</div>
-
-
-</section>
-
-
-
-
-<!-- Application Form -->
-
-
-<form action="/apply" method="POST" enctype="multipart/form-data">
-
-<div class="form-group">
-
-<label>
-Cover Letter
-</label>
-
-<textarea name="cover_letter" placeholder="Explain why you are suitable..."></textarea>
-</div>
-
-
-
-
-
-<div class="form-group">
-
-<label>
-Upload Resume
-</label>
-
-
-<div class="resume-upload">
-
-<input type="file" name="resume">
-<p>
-Upload your latest resume (PDF/DOC)
-</p>
-
-</div>
-
-
-</div>
-
-
-
-
-
-<div class="form-group">
-
-
-<label>
-
-<input type="checkbox">
-
-I confirm that the information provided is accurate.
-
-</label>
-
-
-</div>
-
-
-
-
-<button class="btn btn-primary" type="submit">
-
-Submit Application
-
-</button>
-
-
-
-</form>
-
-
-
-</div>
-
-
+  <h1>Apply for Job</h1>
+  <p class="subtitle">Submit your application for the selected vacancy.</p>
+
+  <div class="apply-container">
+    <section class="detail-header">
+      <div>
+        <h2 class="detail-title">{{ job.title }}</h2>
+        <div class="job-meta">
+          ABC Technologies · {{ job.location or "Remote" }} · {{ job.state or "" }}
+        </div>
+        
+        <div style="margin-top: 10px;">
+          {% for skill in job.skills_required %}
+            <span class="skill-tag">{{ skill }}</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="trust-seal">
+        <div class="score">{{ job.credibility_score or "N/A" }}</div>
+        <div class="label">Trust</div>
+      </div>
+    </section>
+
+    <form action="/apply" method="POST" enctype="multipart/form-data">
+      <input type="hidden" name="job_id" value="{{ job.id }}">
+
+      <div class="form-group">
+        <label>Cover Letter</label>
+        <textarea name="cover_letter" placeholder="Explain why you are suitable for this position..." required></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Upload Resume</label>
+        <div class="resume-upload">
+          <input type="file" name="resume">
+          <p>Upload your latest resume (PDF/DOC)</p>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="width:100%">Submit Application</button>
+    </form>
+  </div>
 </main>
-
-
-
-
-<script>
-document.querySelector("form").addEventListener("submit", function(e){
-  alert("Application submitted successfully! Sending to backend...");
-  // Without preventDefault(), the form will submit as normal right after you click OK
-});
-</script>
-
-
-
-</body>
-</html>

@@ -152,7 +152,9 @@
       <p class="status-msg" id="resumeStatus"></p>
       <div id="resumeCurrent"></div>
     </section>
+  <div id="applicationsTrackerContainer"></div>
   </main>
+
 
   <!-- PDF preview modal -->
   <div id="previewOverlay" class="preview-overlay" style="display:none;">
@@ -487,7 +489,18 @@
         document.getElementById("skillsStatus").className = "status-msg error";
       }
     }
-
+    async function injectApplicationsTracker() {
+      try {
+        const response = await fetch('/my-applications-fragment');
+        if (response.ok) {
+          document.getElementById('applicationsTrackerContainer').innerHTML = await response.text();
+        }
+      } catch (err) {
+        console.error("Unable to cross-mount structural applications table log:", err);
+      }
+    }
+    // Fire injection on load lifecycle hooks
+    window.addEventListener('DOMContentLoaded', injectApplicationsTracker);
     loadProfile();
   </script>
 </body>
