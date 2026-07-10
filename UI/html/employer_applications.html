@@ -1,346 +1,127 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-<title>View Applications</title>
-
-<link rel="stylesheet" href="../css/style.css" />
-<link rel="stylesheet" href="../css/application.css" />
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>View Applications</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/application.css" />
 </head>
-
-
-
 <body>
 
+  <header class="topbar">
+    <div class="brand">Job Portal</div>
+    <nav>
+      <a href="employer_applications.html">Applications</a>
+      <a href="browse.html">Jobs</a>
+      <a href="profile.html">Profile</a>
+    </nav>
+  </header>
 
-<header class="topbar">
+  <div class="dev-user-bar" id="devUserBar"></div>
 
-<div class="brand">
-Job Portal
-</div>
+  <main class="page">
+    <h1>Job Applications</h1>
+    <p class="subtitle">Review candidates who applied for your vacancies.</p>
 
-
-<nav>
-
-<a href="employer_applications.html">
-Applications
-</a>
-
-<a href="browse.html">
-Jobs
-</a>
-
-<a href="profile.html">
-Profile
-</a>
-
-</nav>
-
-
-</header>
-
-
-
-
-<div class="dev-user-bar">
-
-Acting as: Employer #1 — ABC Technologies
-
-<span style="opacity:0.75">
-(login stand-in for Sprint 1)
-</span>
-
-</div>
-
-
-
-
-
-
-<main class="page">
-
-
-<h1>
-Job Applications
-</h1>
-
-
-<p class="subtitle">
-Review candidates who applied for your vacancies.
-</p>
-
-
-
-
-
-<div class="detail-description">
-
-
-<h2>
-Backend Engineer
-</h2>
-
-
-<div class="job-meta">
-
-ABC Technologies · Penang, Malaysia
-
-</div>
-
-
-<p>
-
-Total Applications: <strong>3</strong>
-
-</p>
-
-
-</div>
-
-
-
-
-
-<br>
-
-
-
-
-
-<div class="applicant-list">
-  {% for applicant in applicants %}
-  <div class="applicant-card">
-    <div class="applicant-header">
-      <div class="applicant-name">{{ applicant.seeker }}</div>
-      <span class="application-status 
-        {% if applicant.status == 'Applied' %}status-applied
-        {% elif applicant.status == 'Screening' %}status-screening
-        {% elif applicant.status == 'Interview' %}status-interview
-        {% elif applicant.status == 'Rejected' %}status-rejected
-        {% endif %}">
-        {{ applicant.status }}
-      </span>
+    <div class="detail-description">
+      <p>Total Applications: <strong id="totalCount">0</strong></p>
     </div>
-    <div class="applicant-info">
-      <p>Email: {{ applicant.email }}</p>
-      <p>Skills: 
-        {% for skill in applicant.skills %}
-        <span class="skill-tag">{{ skill }}</span>
-        {% endfor %}
-      </p>
-      <p>Applied Date: {{ applicant.applied_date }}</p>
+
+    <br>
+
+    <div class="applicant-list" id="applicantList">
+      <p class="subtitle">Loading applications...</p>
     </div>
-    <a href="/employer/applicant/{{ applicant.id }}" class="btn btn-primary" style="text-decoration: none; display: inline-block; text-align: center; margin-top: 10px;">View Application</a>
-  </div>
-  {% endfor %}
-</div>
-
-
-
-
-<button class="btn btn-primary">
-
-View Application
-
-</button>
-
-
-
-</div>
-
-
-
-
-
-
-
-
-<!-- Applicant 2 -->
-
-
-<div class="applicant-card">
-
-
-<div class="applicant-header">
-
-
-<div class="applicant-name">
-
-Jane Lim
-
-</div>
-
-
-<span class="application-status status-interview">
-
-Interview
-
-</span>
-
-
-</div>
-
-
-
-
-<div class="applicant-info">
-
-
-<p>
-
-Email:
-jane.lim@email.com
-
-</p>
-
-
-<p>
-
-Skills:
-
-<span class="skill-tag">
-React
-</span>
-
-
-<span class="skill-tag">
-JavaScript
-</span>
-
-
-</p>
-
-
-<p>
-
-Applied Date:
-11 July 2026
-
-</p>
-
-
-</div>
-
-
-
-
-<button class="btn btn-primary">
-
-View Application
-
-</button>
-
-
-
-</div>
-
-
-
-
-
-
-
-
-<!-- Applicant 3 -->
-
-
-<div class="applicant-card">
-
-
-<div class="applicant-header">
-
-
-<div class="applicant-name">
-
-David Wong
-
-</div>
-
-
-<span class="application-status status-applied">
-
-Applied
-
-</span>
-
-
-</div>
-
-
-
-
-<div class="applicant-info">
-
-
-<p>
-
-Email:
-david.wong@email.com
-
-</p>
-
-
-<p>
-
-Skills:
-
-<span class="skill-tag">
-Node.js
-</span>
-
-
-<span class="skill-tag">
-MongoDB
-</span>
-
-
-</p>
-
-
-<p>
-
-Applied Date:
-12 July 2026
-
-</p>
-
-
-</div>
-
-
-
-
-<button class="btn btn-primary">
-
-View Application
-
-</button>
-
-
-
-</div>
-
-
-
-
-
-
-</div>
-
-
-
-
-
-</main>
-
-
-
-
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script>
+    const employerId = 1;
+    if (typeof renderDevUserBar === "function") {
+      renderDevUserBar("devUserBar");
+    } else {
+      document.getElementById("devUserBar").innerHTML = `
+        Acting as: Employer #${employerId} — ABC Technologies
+        <span style="opacity:0.75">(login stand-in for Sprint 1)</span>
+      `;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function statusClassFor(status) {
+      if (status === "Screening") return "status-screening";
+      if (status === "Interview") return "status-interview";
+      if (status === "Rejected") return "status-rejected";
+      if (status === "Offered") return "status-interview";
+      return "status-applied";
+    }
+
+    function applicantCardHtml(applicant) {
+      const skillsHtml = (applicant.skills || [])
+        .map(skill => `<span class="skill-tag">${escapeHtml(skill)}</span>`)
+        .join("");
+
+      return `
+        <div class="applicant-card">
+          <div class="applicant-header">
+            <div class="applicant-name">${escapeHtml(applicant.seeker)}</div>
+            <span class="application-status ${statusClassFor(applicant.status)}">
+              ${escapeHtml(applicant.status)}
+            </span>
+          </div>
+          <div class="applicant-info">
+            <p>Applying for: <strong>${escapeHtml(applicant.job_title)}</strong></p>
+            <p>Email: ${escapeHtml(applicant.email)}</p>
+            <p>Skills: ${skillsHtml}</p>
+            <p>Applied Date: ${escapeHtml(applicant.applied_date)}</p>
+          </div>
+          <a href="applicant_detail.html?id=${applicant.id}" class="btn btn-primary"
+             style="text-decoration:none; display:inline-block; text-align:center; margin-top:10px;">
+             View Application
+          </a>
+        </div>
+      `;
+    }
+
+    async function loadApplicants() {
+      const listEl = document.getElementById("applicantList");
+      try {
+        const response = await fetch(`/api/employer/applications?employer_id=${employerId}`);
+        if (!response.ok) throw new Error("Failed to pull database entries");
+        const applicants = await response.json();
+
+        document.getElementById("totalCount").textContent = applicants.length;
+
+        if (applicants.length === 0) {
+          listEl.innerHTML = `
+            <p class="subtitle" style="text-align:center; color:#777; margin-top:30px;">
+              No one has applied to your job postings yet.
+            </p>
+          `;
+          return;
+        }
+
+        listEl.innerHTML = applicants.map(applicantCardHtml).join("");
+      } catch (err) {
+        console.error(err);
+        listEl.innerHTML = `
+          <p class="status-msg error">
+            Couldn't load applications: ${escapeHtml(err.message)}. Is the FastAPI server running?
+          </p>
+        `;
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", loadApplicants);
+  </script>
 </body>
-
 </html>

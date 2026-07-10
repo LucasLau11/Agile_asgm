@@ -148,3 +148,18 @@ class Application(Base):
 
     # Relationship back to target positions if available
     job = relationship("Job", back_populates="applications" if hasattr(Job, "applications") else None)
+
+class Notification(Base):
+    """Notifications sent to a seeker when their application status changes."""
+ 
+    __tablename__ = "notifications"
+ 
+    id = Column(Integer, primary_key=True, index=True)
+    seeker_id = Column(Integer, nullable=False, index=True, default=1)
+    application_id = Column(Integer, ForeignKey("applications.id"), nullable=True, index=True)
+    title = Column(String(200), nullable=False, default="")
+    message = Column(Text, nullable=False, default="")
+    is_read = Column(Integer, nullable=False, default=0)  # 0 = unread, 1 = read
+    created_at = Column(DateTime, default=datetime.utcnow)
+ 
+    application = relationship("Application")
