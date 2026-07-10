@@ -18,8 +18,43 @@
 
   <main class="page">
     <h1>My profile</h1>
-    <p class="subtitle">Keep your resume and skills up to date so job matching works well.</p>
+    <p class="subtitle">Keep your details up to date so employers get an accurate picture of you.</p>
 
+    <!-- Personal info -->
+    <section class="profile-section">
+      <div class="section-header-row">
+        <h2>Personal info</h2>
+        <button type="button" class="btn-link" id="editInfoBtn">Edit</button>
+      </div>
+      <div id="infoDisplay"></div>
+      <form id="infoForm" style="display:none;">
+        <div class="form-row">
+          <div class="form-field">
+            <label for="fullNameInput">Full name</label>
+            <input type="text" id="fullNameInput" placeholder="e.g. Aisha Rahman" />
+          </div>
+          <div class="form-field">
+            <label for="emailInput">Email</label>
+            <input type="email" id="emailInput" placeholder="e.g. aisha@example.com" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="phoneInput">Phone</label>
+            <input type="text" id="phoneInput" placeholder="e.g. 012-345 6789" />
+          </div>
+        </div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="bioInput">Bio / summary</label>
+          <textarea id="bioInput" rows="3" placeholder="A short summary about yourself…"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" class="btn btn-secondary" id="cancelInfoBtn">Cancel</button>
+      </form>
+      <p class="status-msg" id="infoStatus"></p>
+    </section>
+
+    <!-- Skills -->
     <section class="profile-section">
       <h2>Skills</h2>
       <div class="skills-editor" id="skillsEditor"></div>
@@ -31,6 +66,83 @@
       <p class="status-msg" id="skillsStatus"></p>
     </section>
 
+    <!-- Work experience -->
+    <section class="profile-section">
+      <div class="section-header-row">
+        <h2>Work experience</h2>
+        <button type="button" class="btn-link" id="addExperienceBtn">+ Add</button>
+      </div>
+      <div id="experienceList"></div>
+      <form id="experienceForm" class="entry-form" style="display:none;">
+        <div class="form-row">
+          <div class="form-field">
+            <label for="expTitleInput">Job title</label>
+            <input type="text" id="expTitleInput" required />
+          </div>
+          <div class="form-field">
+            <label for="expCompanyInput">Company</label>
+            <input type="text" id="expCompanyInput" required />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="expStartInput">Start date</label>
+            <input type="text" id="expStartInput" placeholder="e.g. Jan 2023" />
+          </div>
+          <div class="form-field">
+            <label for="expEndInput">End date</label>
+            <input type="text" id="expEndInput" placeholder="Leave blank for 'Present'" />
+          </div>
+        </div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="expDescInput">Description</label>
+          <textarea id="expDescInput" rows="2"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Add experience</button>
+        <button type="button" class="btn btn-secondary" id="cancelExperienceBtn">Cancel</button>
+      </form>
+    </section>
+
+    <!-- Education -->
+    <section class="profile-section">
+      <div class="section-header-row">
+        <h2>Education</h2>
+        <button type="button" class="btn-link" id="addEducationBtn">+ Add</button>
+      </div>
+      <div id="educationList"></div>
+      <form id="educationForm" class="entry-form" style="display:none;">
+        <div class="form-row">
+          <div class="form-field">
+            <label for="eduInstitutionInput">Institution</label>
+            <input type="text" id="eduInstitutionInput" required />
+          </div>
+          <div class="form-field">
+            <label for="eduDegreeInput">Degree</label>
+            <input type="text" id="eduDegreeInput" placeholder="e.g. BSc" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="eduFieldInput">Field of study</label>
+            <input type="text" id="eduFieldInput" placeholder="e.g. Computer Science" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="eduStartInput">Start year</label>
+            <input type="text" id="eduStartInput" placeholder="e.g. 2019" />
+          </div>
+          <div class="form-field">
+            <label for="eduEndInput">End year</label>
+            <input type="text" id="eduEndInput" placeholder="e.g. 2023" />
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Add education</button>
+        <button type="button" class="btn btn-secondary" id="cancelEducationBtn">Cancel</button>
+      </form>
+    </section>
+
+    <!-- Resume -->
     <section class="profile-section">
       <h2>Resume</h2>
       <label class="resume-drop" for="resumeInput" style="display:block; cursor:pointer;">
@@ -42,7 +154,7 @@
     </section>
   </main>
 
-  <!-- PDF preview modal (US-03 enhancement: preview uploaded resume content) -->
+  <!-- PDF preview modal -->
   <div id="previewOverlay" class="preview-overlay" style="display:none;">
     <div class="preview-modal">
       <div class="preview-modal-header">
@@ -58,15 +170,74 @@
     renderDevUserBar("devUserBar");
     const seekerId = getCurrentSeekerId();
 
-    let currentSkills = [];
+    let profileData = null; // holds the full profile response between renders
+
+    // ============================ Personal info ============================
+
+    function renderInfoDisplay() {
+      const el = document.getElementById("infoDisplay");
+      const hasInfo = profileData.full_name || profileData.email || profileData.phone || profileData.bio;
+      if (!hasInfo) {
+        el.innerHTML = `<p class="subtitle" style="font-size:0.88rem;">No personal info added yet. Click "Edit" to add your name and contact details.</p>`;
+        return;
+      }
+      el.innerHTML = `
+        ${profileData.full_name ? `<div class="info-name">${escapeHtml(profileData.full_name)}</div>` : ""}
+        <div class="info-contact">
+          ${profileData.email ? `<span>${escapeHtml(profileData.email)}</span>` : ""}
+          ${profileData.phone ? `<span>${escapeHtml(profileData.phone)}</span>` : ""}
+        </div>
+        ${profileData.bio ? `<p class="info-bio">${escapeHtml(profileData.bio)}</p>` : ""}
+      `;
+    }
+
+    document.getElementById("editInfoBtn").addEventListener("click", () => {
+      document.getElementById("fullNameInput").value = profileData.full_name || "";
+      document.getElementById("emailInput").value = profileData.email || "";
+      document.getElementById("phoneInput").value = profileData.phone || "";
+      document.getElementById("bioInput").value = profileData.bio || "";
+      document.getElementById("infoDisplay").style.display = "none";
+      document.getElementById("infoForm").style.display = "block";
+      document.getElementById("editInfoBtn").style.display = "none";
+    });
+
+    document.getElementById("cancelInfoBtn").addEventListener("click", () => {
+      document.getElementById("infoForm").style.display = "none";
+      document.getElementById("infoDisplay").style.display = "block";
+      document.getElementById("editInfoBtn").style.display = "inline";
+    });
+
+    document.getElementById("infoForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const statusEl = document.getElementById("infoStatus");
+      try {
+        profileData = await updateProfileInfo(seekerId, {
+          full_name: document.getElementById("fullNameInput").value.trim(),
+          email: document.getElementById("emailInput").value.trim(),
+          phone: document.getElementById("phoneInput").value.trim(),
+          bio: document.getElementById("bioInput").value.trim(),
+        });
+        renderInfoDisplay();
+        document.getElementById("infoForm").style.display = "none";
+        document.getElementById("infoDisplay").style.display = "block";
+        document.getElementById("editInfoBtn").style.display = "inline";
+        statusEl.textContent = "Saved.";
+        statusEl.className = "status-msg success";
+      } catch (err) {
+        statusEl.textContent = `Couldn't save: ${err.message}`;
+        statusEl.className = "status-msg error";
+      }
+    });
+
+    // ================================ Skills ================================
 
     function renderSkills() {
       const editor = document.getElementById("skillsEditor");
-      if (currentSkills.length === 0) {
+      if (profileData.skills.length === 0) {
         editor.innerHTML = `<span class="subtitle" style="font-size:0.88rem">No skills added yet.</span>`;
         return;
       }
-      editor.innerHTML = currentSkills
+      editor.innerHTML = profileData.skills
         .map(
           (skill, i) => `
         <span class="skill-chip">
@@ -78,17 +249,17 @@
 
       editor.querySelectorAll("button[data-index]").forEach((btn) => {
         btn.addEventListener("click", () => {
-          currentSkills.splice(Number(btn.dataset.index), 1);
-          saveSkills();
+          const skills = [...profileData.skills];
+          skills.splice(Number(btn.dataset.index), 1);
+          saveSkills(skills);
         });
       });
     }
 
-    async function saveSkills() {
+    async function saveSkills(skills) {
       const statusEl = document.getElementById("skillsStatus");
       try {
-        const updated = await updateSeekerSkills(seekerId, currentSkills);
-        currentSkills = updated.skills;
+        profileData = await updateSeekerSkills(seekerId, skills);
         renderSkills();
         statusEl.textContent = "Skills saved.";
         statusEl.className = "status-msg success";
@@ -98,14 +269,134 @@
       }
     }
 
-    function renderResumeCurrent(profile) {
+    document.getElementById("addSkillForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const input = document.getElementById("newSkillInput");
+      const value = input.value.trim();
+      if (value && !profileData.skills.includes(value)) {
+        input.value = "";
+        saveSkills([...profileData.skills, value]);
+      }
+    });
+
+    // ============================ Work experience ============================
+
+    function renderExperience() {
+      const listEl = document.getElementById("experienceList");
+      if (profileData.experience.length === 0) {
+        listEl.innerHTML = `<p class="subtitle" style="font-size:0.88rem;">No work experience added yet.</p>`;
+        return;
+      }
+      listEl.innerHTML = profileData.experience
+        .map(
+          (exp) => `
+        <div class="entry-card">
+          <div class="entry-card-header">
+            <div>
+              <div class="entry-title">${escapeHtml(exp.job_title)}</div>
+              <div class="entry-subtitle">${escapeHtml(exp.company_name)} &nbsp;•&nbsp; ${escapeHtml(exp.start_date || "")} – ${escapeHtml(exp.end_date || "Present")}</div>
+            </div>
+            <button type="button" class="entry-delete" data-id="${exp.id}" title="Remove">&times;</button>
+          </div>
+          ${exp.description ? `<p class="entry-desc">${escapeHtml(exp.description)}</p>` : ""}
+        </div>`
+        )
+        .join("");
+
+      listEl.querySelectorAll(".entry-delete").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          profileData = await deleteExperience(seekerId, btn.dataset.id);
+          renderExperience();
+        });
+      });
+    }
+
+    document.getElementById("addExperienceBtn").addEventListener("click", () => {
+      document.getElementById("experienceForm").style.display = "block";
+    });
+    document.getElementById("cancelExperienceBtn").addEventListener("click", () => {
+      document.getElementById("experienceForm").style.display = "none";
+    });
+
+    document.getElementById("experienceForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      profileData = await addExperience(seekerId, {
+        job_title: document.getElementById("expTitleInput").value.trim(),
+        company_name: document.getElementById("expCompanyInput").value.trim(),
+        start_date: document.getElementById("expStartInput").value.trim(),
+        end_date: document.getElementById("expEndInput").value.trim(),
+        description: document.getElementById("expDescInput").value.trim(),
+      });
+      renderExperience();
+      e.target.reset();
+      document.getElementById("experienceForm").style.display = "none";
+    });
+
+    // ================================ Education ================================
+
+    function renderEducation() {
+      const listEl = document.getElementById("educationList");
+      if (profileData.education.length === 0) {
+        listEl.innerHTML = `<p class="subtitle" style="font-size:0.88rem;">No education added yet.</p>`;
+        return;
+      }
+      listEl.innerHTML = profileData.education
+        .map(
+          (edu) => `
+        <div class="entry-card">
+          <div class="entry-card-header">
+            <div>
+              <div class="entry-title">${escapeHtml(edu.institution)}</div>
+              <div class="entry-subtitle">
+                ${escapeHtml([edu.degree, edu.field_of_study].filter(Boolean).join(", "))}
+                &nbsp;•&nbsp; ${escapeHtml(edu.start_date || "")} – ${escapeHtml(edu.end_date || "Present")}
+              </div>
+            </div>
+            <button type="button" class="entry-delete" data-id="${edu.id}" title="Remove">&times;</button>
+          </div>
+        </div>`
+        )
+        .join("");
+
+      listEl.querySelectorAll(".entry-delete").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          profileData = await deleteEducation(seekerId, btn.dataset.id);
+          renderEducation();
+        });
+      });
+    }
+
+    document.getElementById("addEducationBtn").addEventListener("click", () => {
+      document.getElementById("educationForm").style.display = "block";
+    });
+    document.getElementById("cancelEducationBtn").addEventListener("click", () => {
+      document.getElementById("educationForm").style.display = "none";
+    });
+
+    document.getElementById("educationForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      profileData = await addEducation(seekerId, {
+        institution: document.getElementById("eduInstitutionInput").value.trim(),
+        degree: document.getElementById("eduDegreeInput").value.trim(),
+        field_of_study: document.getElementById("eduFieldInput").value.trim(),
+        start_date: document.getElementById("eduStartInput").value.trim(),
+        end_date: document.getElementById("eduEndInput").value.trim(),
+      });
+      renderEducation();
+      e.target.reset();
+      document.getElementById("educationForm").style.display = "none";
+    });
+
+    // ================================= Resume =================================
+
+    function renderResumeCurrent() {
       const el = document.getElementById("resumeCurrent");
-      if (!profile.resume_filename) {
+      if (!profileData.resume_filename) {
         el.innerHTML = `<p class="subtitle" style="font-size:0.88rem; margin-top:12px;">No resume uploaded yet.</p>`;
         return;
       }
 
-      const filename = profile.resume_filename;
+      const filename = profileData.resume_filename;
       const extension = (filename.split(".").pop() || "").toUpperCase();
       const typeLabel = extension === "PDF" ? "PDF" : extension === "DOC" || extension === "DOCX" ? "DOC" : extension;
       const isPdf = extension === "PDF";
@@ -137,10 +428,9 @@
       const cardEl = document.getElementById("fileCard");
       cardEl.addEventListener("click", () => {
         if (isPdf) {
-          openPreview(profile.resume_url, filename);
+          openPreview(profileData.resume_url, filename);
         } else {
-          // Browsers can't render Word docs inline, so just open/download it.
-          window.open(profile.resume_url, "_blank");
+          window.open(profileData.resume_url, "_blank");
         }
       });
       cardEl.addEventListener("keydown", (e) => {
@@ -153,41 +443,16 @@
       document.getElementById("previewFrame").src = url;
       document.getElementById("previewOverlay").style.display = "flex";
     }
-
     function closePreview() {
       document.getElementById("previewOverlay").style.display = "none";
-      document.getElementById("previewFrame").src = ""; // stop loading/free memory
+      document.getElementById("previewFrame").src = "";
     }
-
     document.getElementById("previewCloseBtn").addEventListener("click", closePreview);
     document.getElementById("previewOverlay").addEventListener("click", (e) => {
-      if (e.target.id === "previewOverlay") closePreview(); // click outside modal closes it
+      if (e.target.id === "previewOverlay") closePreview();
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closePreview();
-    });
-
-    async function loadProfile() {
-      try {
-        const profile = await fetchSeekerProfile(seekerId);
-        currentSkills = profile.skills;
-        renderSkills();
-        renderResumeCurrent(profile);
-      } catch (err) {
-        document.getElementById("skillsStatus").textContent = `Couldn't load profile: ${err.message}`;
-        document.getElementById("skillsStatus").className = "status-msg error";
-      }
-    }
-
-    document.getElementById("addSkillForm").addEventListener("submit", (e) => {
-      e.preventDefault();
-      const input = document.getElementById("newSkillInput");
-      const value = input.value.trim();
-      if (value && !currentSkills.includes(value)) {
-        currentSkills.push(value);
-        input.value = "";
-        saveSkills();
-      }
     });
 
     document.getElementById("resumeInput").addEventListener("change", async (e) => {
@@ -197,8 +462,8 @@
       statusEl.textContent = "Uploading…";
       statusEl.className = "status-msg";
       try {
-        const profile = await uploadResume(seekerId, file);
-        renderResumeCurrent(profile);
+        profileData = await uploadResume(seekerId, file);
+        renderResumeCurrent();
         statusEl.textContent = "Resume uploaded.";
         statusEl.className = "status-msg success";
       } catch (err) {
@@ -206,6 +471,22 @@
         statusEl.className = "status-msg error";
       }
     });
+
+    // ============================ Initial load ============================
+
+    async function loadProfile() {
+      try {
+        profileData = await fetchSeekerProfile(seekerId);
+        renderInfoDisplay();
+        renderSkills();
+        renderExperience();
+        renderEducation();
+        renderResumeCurrent();
+      } catch (err) {
+        document.getElementById("skillsStatus").textContent = `Couldn't load profile: ${err.message}`;
+        document.getElementById("skillsStatus").className = "status-msg error";
+      }
+    }
 
     loadProfile();
   </script>

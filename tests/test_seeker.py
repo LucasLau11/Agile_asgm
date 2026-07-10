@@ -254,3 +254,260 @@ def test_upload_resume_rejects_oversized_file(client):
         files={"file": ("big_resume.pdf", oversized, "application/pdf")},
     )
     assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Advanced filters: state, job_type, salary range
+# ---------------------------------------------------------------------------
+
+
+def test_filter_by_state(client, db_session):
+    """
+    Advanced filter: filter jobs by state/region
+
+    Given jobs in different states
+    When I filter by state=Penang
+    Then only the Penang job is returned
+    """
+    db_session.add_all([
+        Job(employer_id=1, title="Job A", description="x" * 60, state="Penang", status="open"),
+        Job(employer_id=1, title="Job B", description="x" * 60, state="Selangor", status="open"),
+    ])
+    db_session.commit()
+
+    r = client.get("/api/jobs?state=Penang")
+    assert r.status_code == 200
+    results = r.json()
+    assert len(results) == 1
+    assert results[0]["title"] == "Job A"
+
+
+def test_filter_by_job_type(client, db_session):
+    """
+    Advanced filter: filter jobs by job type
+
+    Given jobs of different types
+    When I filter by job_type=Internship
+    Then only internship postings are returned
+    """
+    db_session.add_all([
+        Job(employer_id=1, title="Intern role", description="x" * 60, job_type="Internship", status="open"),
+        Job(employer_id=1, title="FT role", description="x" * 60, job_type="Full-time", status="open"),
+    ])
+    db_session.commit()
+
+    r = client.get("/api/jobs?job_type=Internship")
+    assert r.status_code == 200
+    assert len(r.json()) == 1
+    assert r.json()[0]["title"] == "Intern role"
+
+
+def test_filter_by_salary_range_overlap(client, db_session):
+    """
+    Advanced filter: salary range uses overlap logic, not strict containment
+
+    Given a job paying RM4000-6000
+    When I search for salary_min=5000&salary_max=8000 (only partially overlapping)
+    Then the job still shows up, because part of its range fits what I want
+    """
+    db_session.add(
+        Job(employer_id=1, title="Overlapping job", description="x" * 60,
+            salary_min=4000, salary_max=6000, status="open")
+    )
+    db_session.commit()
+
+    r = client.get("/api/jobs?salary_min=5000&salary_max=8000")
+    assert r.status_code == 200
+    assert len(r.json()) == 1
+
+
+def test_filter_by_salary_range_excludes_non_overlapping(client, db_session):
+    """
+    Advanced filter: salary range excludes jobs with no overlap at all
+
+    Given a job paying RM1500-2200 (an internship stipend)
+    When I search for salary_min=5000&salary_max=8000
+    Then that job is excluded
+    """
+    db_session.add(
+        Job(employer_id=1, title="Low paying job", description="x" * 60,
+            salary_min=1500, salary_max=2200, status="open")
+    )
+    db_session.commit()
+
+    r = client.get("/api/jobs?salary_min=5000&salary_max=8000")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Positions remaining ("spots left" display)
+# ---------------------------------------------------------------------------
+
+
+def test_positions_remaining_computed_correctly(client, db_session):
+    """
+    Given a job with 3 available positions and 1 already filled
+    When I fetch that job
+    Then positions_remaining is 2 (3 - 1)
+    """
+    job = Job(employer_id=1, title="Job", description="x" * 60, status="open",
+              positions_available=3, positions_filled=1)
+    db_session.add(job)
+    db_session.commit()
+    db_session.refresh(job)
+
+    r = client.get(f"/api/jobs/{job.id}")
+    assert r.status_code == 200
+    assert r.json()["positions_remaining"] == 2
+
+
+def test_positions_remaining_never_negative(client, db_session):
+    """
+    Given a job that's somehow over-filled (edge case / data entry error)
+    When I fetch that job
+    Then positions_remaining floors at 0, not a negative number
+    """
+    job = Job(employer_id=1, title="Job", description="x" * 60, status="open",
+              positions_available=1, positions_filled=5)
+    db_session.add(job)
+    db_session.commit()
+    db_session.refresh(job)
+
+    r = client.get(f"/api/jobs/{job.id}")
+    assert r.json()["positions_remaining"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Resume/skill-based job matching
+# ---------------------------------------------------------------------------
+
+
+def test_recommended_jobs_scores_by_skill_overlap(client, db_session):
+    """
+    Given a seeker with skills Python, SQL
+    And a job requiring Python, SQL, Docker
+    When I fetch recommended jobs for that seeker
+    Then the job is returned with a 67% match (2 of 3 required skills)
+    """
+    client.put("/api/seekers/50/skills", json={"skills": ["Python", "SQL"]})
+    db_session.add(
+        Job(employer_id=1, title="Matched job", description="x" * 60,
+            skills_required="Python,SQL,Docker", status="open")
+    )
+    db_session.commit()
+
+    r = client.get("/api/jobs/recommended?seeker_id=50")
+    assert r.status_code == 200
+    results = r.json()
+    assert len(results) == 1
+    assert results[0]["match_percentage"] == 67
+
+
+def test_recommended_jobs_excludes_zero_overlap(client, db_session):
+    """
+    Given a seeker with skills that share nothing with a job's requirements
+    When I fetch recommended jobs
+    Then that job is excluded entirely (0% match doesn't clear the min_match bar)
+    """
+    client.put("/api/seekers/51/skills", json={"skills": ["Photoshop"]})
+    db_session.add(
+        Job(employer_id=1, title="Unrelated job", description="x" * 60,
+            skills_required="Python,SQL", status="open")
+    )
+    db_session.commit()
+
+    r = client.get("/api/jobs/recommended?seeker_id=51")
+    assert r.json() == []
+
+
+def test_recommended_jobs_empty_when_seeker_has_no_skills(client):
+    """
+    Given a seeker who has never set any skills
+    When I fetch recommended jobs
+    Then I get an empty list rather than an error
+    """
+    r = client.get("/api/jobs/recommended?seeker_id=999")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Profile info (name/email/phone/bio)
+# ---------------------------------------------------------------------------
+
+
+def test_update_profile_info(client):
+    """
+    Given a seeker fills in their personal details
+    When I PUT /api/seekers/{id} with name/email/phone/bio
+    Then the profile reflects those values
+    """
+    r = client.put(
+        "/api/seekers/60",
+        json={"full_name": "Jane Doe", "email": "jane@test.com", "phone": "012-3456789", "bio": "Hello."},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["full_name"] == "Jane Doe"
+    assert body["email"] == "jane@test.com"
+
+
+# ---------------------------------------------------------------------------
+# Work experience
+# ---------------------------------------------------------------------------
+
+
+def test_add_and_delete_experience(client):
+    """
+    Given a seeker adds a work experience entry
+    When I POST then DELETE it
+    Then it appears after adding and disappears after deleting
+    """
+    r = client.post(
+        "/api/seekers/61/experience",
+        json={"job_title": "Intern", "company_name": "TechCo", "start_date": "2023", "end_date": "2024",
+              "description": "Did things."},
+    )
+    assert r.status_code == 201
+    body = r.json()
+    assert len(body["experience"]) == 1
+    exp_id = body["experience"][0]["id"]
+
+    r2 = client.delete(f"/api/seekers/61/experience/{exp_id}")
+    assert r2.status_code == 200
+    assert r2.json()["experience"] == []
+
+
+def test_delete_experience_not_found_returns_404(client):
+    """
+    Given no experience entry with ID 999 exists for this seeker
+    When I try to delete it
+    Then I get 404, not a silent success
+    """
+    r = client.delete("/api/seekers/62/experience/999")
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Education
+# ---------------------------------------------------------------------------
+
+
+def test_add_and_delete_education(client):
+    """
+    Given a seeker adds an education entry
+    When I POST then DELETE it
+    Then it appears after adding and disappears after deleting
+    """
+    r = client.post(
+        "/api/seekers/63/education",
+        json={"institution": "USM", "degree": "BSc", "field_of_study": "CS",
+              "start_date": "2019", "end_date": "2023"},
+    )
+    assert r.status_code == 201
+    edu_id = r.json()["education"][0]["id"]
+
+    r2 = client.delete(f"/api/seekers/63/education/{edu_id}")
+    assert r2.status_code == 200
+    assert r2.json()["education"] == []

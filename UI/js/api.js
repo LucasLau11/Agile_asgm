@@ -14,6 +14,23 @@ const TEST_SEEKERS = [
   { id: 3, label: "Seeker #3 — Priya" },
 ];
 
+// Used to populate the state/region filter dropdown on Browse Jobs.
+const MALAYSIA_STATES = [
+  "Remote", "Kuala Lumpur", "Selangor", "Penang", "Johor", "Perak",
+  "Negeri Sembilan", "Melaka", "Pahang", "Kedah", "Kelantan", "Terengganu",
+  "Sabah", "Sarawak", "Perlis", "Putrajaya", "Labuan",
+];
+
+const JOB_TYPES = ["Full-time", "Part-time", "Contract", "Internship", "Remote"];
+
+function formatSalary(min, max) {
+  if (min == null && max == null) return "Salary not specified";
+  const fmt = (n) => `RM${n.toLocaleString()}`;
+  if (min != null && max != null) return `${fmt(min)} – ${fmt(max)} / month`;
+  if (min != null) return `From ${fmt(min)} / month`;
+  return `Up to ${fmt(max)} / month`;
+}
+
 function getCurrentSeekerId() {
   return Number(localStorage.getItem("currentSeekerId") || TEST_SEEKERS[0].id);
 }
@@ -56,12 +73,20 @@ async function apiFetch(path, options = {}) {
   return res.json();
 }
 
-function fetchJobs({ keyword = "", location = "" } = {}) {
+function fetchJobs({ keyword = "", location = "", state = "", jobType = "", salaryMin = "", salaryMax = "" } = {}) {
   const params = new URLSearchParams();
   if (keyword) params.set("keyword", keyword);
   if (location) params.set("location", location);
+  if (state) params.set("state", state);
+  if (jobType) params.set("job_type", jobType);
+  if (salaryMin) params.set("salary_min", salaryMin);
+  if (salaryMax) params.set("salary_max", salaryMax);
   const query = params.toString();
   return apiFetch(`/api/jobs${query ? `?${query}` : ""}`);
+}
+
+function fetchRecommendedJobs(seekerId) {
+  return apiFetch(`/api/jobs/recommended?seeker_id=${seekerId}`);
 }
 
 function fetchJob(jobId) {
@@ -72,12 +97,44 @@ function fetchSeekerProfile(seekerId) {
   return apiFetch(`/api/seekers/${seekerId}`);
 }
 
+function updateProfileInfo(seekerId, info) {
+  return apiFetch(`/api/seekers/${seekerId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(info),
+  });
+}
+
 function updateSeekerSkills(seekerId, skills) {
   return apiFetch(`/api/seekers/${seekerId}/skills`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ skills }),
   });
+}
+
+function addExperience(seekerId, entry) {
+  return apiFetch(`/api/seekers/${seekerId}/experience`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(entry),
+  });
+}
+
+function deleteExperience(seekerId, experienceId) {
+  return apiFetch(`/api/seekers/${seekerId}/experience/${experienceId}`, { method: "DELETE" });
+}
+
+function addEducation(seekerId, entry) {
+  return apiFetch(`/api/seekers/${seekerId}/education`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(entry),
+  });
+}
+
+function deleteEducation(seekerId, educationId) {
+  return apiFetch(`/api/seekers/${seekerId}/education/${educationId}`, { method: "DELETE" });
 }
 
 async function uploadResume(seekerId, file) {
