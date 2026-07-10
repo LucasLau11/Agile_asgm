@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <title>Job Posting Management</title>
-    <link rel="stylesheet" href="/UI/css/special.css">
+    <link rel="stylesheet" href="../css/special.css">
 </head>
 <body>
 
 <header class="topbar">
     <div class="brand">Job Portal</div>
-
     <nav>
         <a href="#">Dashboard</a>
         <a href="#">Profile</a>
@@ -20,105 +19,439 @@
 <div class="page">
 
     <h1>Job Posting Management</h1>
+    <p class="subtitle">Manage all of your company's job postings.</p>
 
-    <p class="subtitle">
-        Manage all of your company's job postings.
-    </p>
+    <!-- List view -->
+    <div id="listView">
+        <div class="search-bar">
+            <input type="text" id="searchBox" placeholder="Search job title...">
 
-    <div class="search-bar">
-        <input type="text" placeholder="Search job title...">
+            <select id="statusFilter" class="btn btn-secondary">
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="draft">Draft</option>
+                <option value="closed">Closed</option>
+            </select>
 
-        <select class="btn btn-secondary">
-            <option>All Status</option>
-            <option>Active</option>
-            <option>Draft</option>
-            <option>Closed</option>
-        </select>
+            <button class="btn btn-primary" onclick="openForm()">+ New Job</button>
+        </div>
 
-        <button class="btn btn-primary">
-            + New Job
-        </button>
+        <div class="job-list" id="jobList"></div>
     </div>
 
-    <div class="job-list">
+    <!-- Detail view -->
+    <div id="detailView" style="display:none;">
+        <button class="btn btn-secondary" onclick="closeDetail()">&larr; Back to Postings</button>
 
-        <div class="job-card">
-
-            <div class="job-main">
-                <h3>Software Engineer</h3>
-
-                <div class="job-meta">
-                    Kuala Lumpur • Full Time
-                </div>
-
-                <span class="skill-tag">Java</span>
-                <span class="skill-tag">Spring Boot</span>
-                <span class="skill-tag">SQL</span>
-
-                <p class="status-msg success">
-                    Active • 18 Applications
-                </p>
-            </div>
-
+        <div class="detail-header" style="margin-top:20px;">
             <div>
-                <button class="btn btn-secondary">View</button>
-                <button class="btn btn-secondary">Edit</button>
-                <button class="btn btn-primary">Close</button>
+                <h1 id="detailTitle"></h1>
+                <div class="job-meta" id="detailMeta"></div>
+                <div id="detailSkills" style="margin-top:8px;"></div>
+                <p class="status-msg" id="detailStatus"></p>
             </div>
-
+            <div class="trust-seal" id="detailSeal">
+                <span class="score" id="detailAppCount">0</span>
+                <span class="label">Applicants</span>
+            </div>
         </div>
 
-        <div class="job-card">
+        <div class="detail-description" id="detailDescription"></div>
+    </div>
 
-            <div class="job-main">
-                <h3>UI/UX Designer</h3>
+    <!-- Form view (create / edit) -->
+    <div id="formView" style="display:none;">
+        <button class="btn btn-secondary" onclick="closeForm()">&larr; Back to Postings</button>
 
-                <div class="job-meta">
-                    Penang • Hybrid
-                </div>
+        <h1 id="formHeading" style="margin-top:20px;"></h1>
 
-                <span class="skill-tag">Figma</span>
-                <span class="skill-tag">Adobe XD</span>
+        <div class="profile-section">
+            <h2>Job Details</h2>
 
-                <p class="status-msg">
-                    Draft • Not Published
-                </p>
+            <label class="job-meta">Job Title</label>
+            <div class="search-bar">
+                <input type="text" id="formTitle" placeholder="e.g. Software Engineer">
             </div>
 
-            <div>
-                <button class="btn btn-secondary">Edit</button>
-                <button class="btn btn-primary">Publish</button>
+            <label class="job-meta">Location</label>
+            <div class="search-bar">
+                <input type="text" id="formLocation" placeholder="e.g. Kuala Lumpur">
             </div>
 
+            <label class="job-meta">Employment Type</label>
+            <div class="search-bar">
+                <select id="formType" class="btn btn-secondary">
+                    <option>Full Time</option>
+                    <option>Part Time</option>
+                    <option>Hybrid</option>
+                    <option>Remote</option>
+                    <option>Contract</option>
+                </select>
+            </div>
         </div>
 
-        <div class="job-card">
+        <div class="profile-section">
+            <h2>Required Skills</h2>
 
-            <div class="job-main">
-                <h3>Data Analyst</h3>
+            <div class="skills-editor" id="formSkills"></div>
 
-                <div class="job-meta">
-                    Johor Bahru • Remote
-                </div>
-
-                <span class="skill-tag">Python</span>
-                <span class="skill-tag">Power BI</span>
-
-                <p class="status-msg error">
-                    Closed • 41 Applications
-                </p>
+            <div class="search-bar">
+                <input type="text" id="formSkillInput" placeholder="Add a skill and press Enter">
+                <button class="btn btn-secondary" onclick="addSkillFromInput()">Add</button>
             </div>
-
-            <div>
-                <button class="btn btn-secondary">View</button>
-                <button class="btn btn-secondary">Duplicate</button>
-            </div>
-
         </div>
 
+        <div class="profile-section">
+            <h2>Description</h2>
+            <textarea id="formDescription" rows="6"
+                style="width:100%; padding:11px 14px; border:1px solid var(--line); border-radius:var(--radius); font-family:var(--font-body); font-size:0.95rem; background:var(--paper-raised); resize:vertical;"
+                placeholder="Describe the role, responsibilities, and requirements..."></textarea>
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button class="btn btn-secondary" onclick="closeForm()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveJob()">Save Job Posting</button>
+        </div>
+
+        <p class="status-msg error" id="formError" style="display:none;"></p>
     </div>
 
 </div>
+
+<script>
+/* ---------- State ---------- */
+
+let jobs = [
+    {
+        id: 1,
+        title: "Software Engineer",
+        location: "Kuala Lumpur",
+        type: "Full Time",
+        status: "active",
+        skills: ["Java", "Spring Boot", "SQL"],
+        applications: 18,
+        description: "We're looking for a Software Engineer to join our backend team, working primarily with Java and Spring Boot to build and maintain scalable services."
+    },
+    {
+        id: 2,
+        title: "UI/UX Designer",
+        location: "Penang",
+        type: "Hybrid",
+        status: "draft",
+        skills: ["Figma", "Adobe XD"],
+        applications: 0,
+        description: "We're hiring a UI/UX Designer to shape the visual and interaction design of our product, working closely with engineering and product teams."
+    },
+    {
+        id: 3,
+        title: "Data Analyst",
+        location: "Johor Bahru",
+        type: "Remote",
+        status: "closed",
+        skills: ["Python", "Power BI"],
+        applications: 41,
+        description: "This role focused on turning raw data into actionable insights using Python and Power BI dashboards for stakeholders across the business."
+    }
+];
+
+let nextId = 4;
+
+/* form-in-progress state */
+let formSkillsList = [];
+let editingJobId = null; // null means "creating new"
+
+/* ---------- Rendering: list ---------- */
+
+function renderJobs() {
+    const list = document.getElementById("jobList");
+    const searchTerm = document.getElementById("searchBox").value.trim().toLowerCase();
+    const statusValue = document.getElementById("statusFilter").value;
+
+    const filtered = jobs.filter(job => {
+        const matchesSearch = job.title.toLowerCase().includes(searchTerm);
+        const matchesStatus = statusValue === "all" || job.status === statusValue;
+        return matchesSearch && matchesStatus;
+    });
+
+    if (filtered.length === 0) {
+        list.innerHTML = `<div class="empty-state">No job postings match your search.</div>`;
+        return;
+    }
+
+    list.innerHTML = filtered.map(jobCardTemplate).join("");
+}
+
+function jobCardTemplate(job) {
+    const skillTags = job.skills
+        .map(skill => `<span class="skill-tag">${skill}</span>`)
+        .join("");
+
+    let statusMsg = "";
+    let statusClass = "status-msg";
+    let actionButtons = "";
+
+    if (job.status === "active") {
+        statusMsg = `Active • ${job.applications} Applications`;
+        statusClass = "status-msg success";
+        actionButtons = `
+            <button class="btn btn-secondary" onclick="viewJob(${job.id})">View</button>
+            <button class="btn btn-secondary" onclick="openForm(${job.id})">Edit</button>
+            <button class="btn btn-primary" onclick="closeJob(${job.id})">Close</button>
+        `;
+    } else if (job.status === "draft") {
+        statusMsg = "Draft • Not Published";
+        actionButtons = `
+            <button class="btn btn-secondary" onclick="openForm(${job.id})">Edit</button>
+            <button class="btn btn-secondary" onclick="viewJob(${job.id})">View</button>
+            <button class="btn btn-primary" onclick="publishJob(${job.id})">Publish</button>
+        `;
+    } else if (job.status === "closed") {
+        statusMsg = `Closed • ${job.applications} Applications`;
+        statusClass = "status-msg error";
+        actionButtons = `
+            <button class="btn btn-secondary" onclick="viewJob(${job.id})">View</button>
+            <button class="btn btn-secondary" onclick="duplicateJob(${job.id})">Duplicate</button>
+            <button class="btn btn-secondary" onclick="deleteJob(${job.id})">Delete</button>
+        `;
+    }
+
+    return `
+        <div class="job-card" data-status="${job.status}" data-id="${job.id}">
+            <div class="job-main">
+                <h3>${job.title}</h3>
+                <div class="job-meta">${job.location} • ${job.type}</div>
+                ${skillTags}
+                <p class="${statusClass}">${statusMsg}</p>
+            </div>
+            <div>${actionButtons}</div>
+        </div>
+    `;
+}
+
+/* ---------- Rendering: detail ---------- */
+
+function viewJob(id) {
+    const job = findJob(id);
+    if (!job) return;
+
+    document.getElementById("detailTitle").textContent = job.title;
+    document.getElementById("detailMeta").textContent = `${job.location} • ${job.type}`;
+    document.getElementById("detailDescription").textContent = job.description || "No description provided.";
+    document.getElementById("detailAppCount").textContent = job.applications;
+
+    document.getElementById("detailSkills").innerHTML = job.skills
+        .map(skill => `<span class="skill-tag">${skill}</span>`)
+        .join("");
+
+    const statusEl = document.getElementById("detailStatus");
+    const sealEl = document.getElementById("detailSeal");
+
+    if (job.status === "active") {
+        statusEl.textContent = `Active • ${job.applications} Applications`;
+        statusEl.className = "status-msg success";
+        sealEl.className = "trust-seal";
+    } else if (job.status === "draft") {
+        statusEl.textContent = "Draft • Not Published";
+        statusEl.className = "status-msg";
+        sealEl.className = "trust-seal low";
+    } else {
+        statusEl.textContent = `Closed • ${job.applications} Applications`;
+        statusEl.className = "status-msg error";
+        sealEl.className = "trust-seal low";
+    }
+
+    showOnly("detailView");
+}
+
+function closeDetail() {
+    showOnly("listView");
+}
+
+/* ---------- Rendering: form ---------- */
+
+function openForm(id) {
+    formError(false);
+
+    if (id) {
+        // Edit mode
+        const job = findJob(id);
+        if (!job) return;
+
+        editingJobId = id;
+        document.getElementById("formHeading").textContent = "Edit Job Posting";
+        document.getElementById("formTitle").value = job.title;
+        document.getElementById("formLocation").value = job.location;
+        document.getElementById("formType").value = job.type;
+        document.getElementById("formDescription").value = job.description || "";
+        formSkillsList = [...job.skills];
+    } else {
+        // Create mode
+        editingJobId = null;
+        document.getElementById("formHeading").textContent = "New Job Posting";
+        document.getElementById("formTitle").value = "";
+        document.getElementById("formLocation").value = "";
+        document.getElementById("formType").value = "Full Time";
+        document.getElementById("formDescription").value = "";
+        formSkillsList = [];
+    }
+
+    document.getElementById("formSkillInput").value = "";
+    renderFormSkills();
+    showOnly("formView");
+}
+
+function closeForm() {
+    showOnly("listView");
+}
+
+function renderFormSkills() {
+    const container = document.getElementById("formSkills");
+
+    if (formSkillsList.length === 0) {
+        container.innerHTML = `<span class="job-meta">No skills added yet.</span>`;
+        return;
+    }
+
+    container.innerHTML = formSkillsList
+        .map((skill, index) => `
+            <span class="skill-chip">
+                ${skill}
+                <button type="button" onclick="removeFormSkill(${index})">&times;</button>
+            </span>
+        `)
+        .join("");
+}
+
+function addSkillFromInput() {
+    const input = document.getElementById("formSkillInput");
+    const value = input.value.trim();
+
+    if (value && !formSkillsList.includes(value)) {
+        formSkillsList.push(value);
+        renderFormSkills();
+    }
+    input.value = "";
+    input.focus();
+}
+
+function removeFormSkill(index) {
+    formSkillsList.splice(index, 1);
+    renderFormSkills();
+}
+
+function formError(message) {
+    const el = document.getElementById("formError");
+    if (!message) {
+        el.style.display = "none";
+        el.textContent = "";
+    } else {
+        el.style.display = "block";
+        el.textContent = message;
+    }
+}
+
+function saveJob() {
+    const title = document.getElementById("formTitle").value.trim();
+    const location = document.getElementById("formLocation").value.trim();
+    const type = document.getElementById("formType").value;
+    const description = document.getElementById("formDescription").value.trim();
+
+    if (!title) {
+        formError("Job title is required.");
+        return;
+    }
+    if (!location) {
+        formError("Location is required.");
+        return;
+    }
+
+    if (editingJobId) {
+        const job = findJob(editingJobId);
+        job.title = title;
+        job.location = location;
+        job.type = type;
+        job.description = description;
+        job.skills = [...formSkillsList];
+    } else {
+        jobs.push({
+            id: nextId++,
+            title,
+            location,
+            type,
+            status: "draft",
+            skills: [...formSkillsList],
+            applications: 0,
+            description
+        });
+    }
+
+    renderJobs();
+    showOnly("listView");
+}
+
+/* ---------- View switching ---------- */
+
+function showOnly(viewId) {
+    ["listView", "detailView", "formView"].forEach(id => {
+        document.getElementById(id).style.display = (id === viewId) ? "block" : "none";
+    });
+}
+
+/* ---------- Actions ---------- */
+
+function findJob(id) {
+    return jobs.find(job => job.id === id);
+}
+
+function publishJob(id) {
+    const job = findJob(id);
+    if (!job) return;
+
+    job.status = "active";
+    job.applications = 0;
+    renderJobs();
+}
+
+function closeJob(id) {
+    const job = findJob(id);
+    if (!job) return;
+
+    job.status = "closed";
+    renderJobs();
+}
+
+function duplicateJob(id) {
+    const job = findJob(id);
+    if (!job) return;
+
+    jobs.push({
+        ...job,
+        id: nextId++,
+        status: "draft",
+        applications: 0
+    });
+    renderJobs();
+}
+
+function deleteJob(id) {
+    jobs = jobs.filter(job => job.id !== id);
+    renderJobs();
+}
+
+/* ---------- Wiring ---------- */
+
+document.getElementById("searchBox").addEventListener("input", renderJobs);
+document.getElementById("statusFilter").addEventListener("change", renderJobs);
+
+document.getElementById("formSkillInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        addSkillFromInput();
+    }
+});
+
+renderJobs();
+</script>
 
 </body>
 </html>
