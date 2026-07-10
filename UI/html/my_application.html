@@ -73,65 +73,30 @@ Track the progress of your submitted job applications.
 
 
 <div class="application-list">
-
-
-
-<!-- Application 1 -->
-
-<div class="application-card">
-
-
-<div class="application-main">
-
-
-<h3>
-Backend Engineer
-</h3>
-
-
-<div class="application-meta">
-ABC Technologies
-</div>
-
-
-<div class="application-meta">
-Applied on: 10 July 2026
-</div>
-
-
-<div>
-
-<span class="skill-tag">
-Python
-</span>
-
-<span class="skill-tag">
-FastAPI
-</span>
-
-<span class="skill-tag">
-SQL
-</span>
-
-</div>
-
-
-</div>
-
-
-
-<div>
-
-<span class="application-status status-screening">
-
-Screening
-
-</span>
-
-</div>
-
-
-
+  {% for app in applications %}
+  <div class="application-card">
+    <div class="application-main">
+      <h3>{{ app.job_title }}</h3>
+      <div class="application-meta">{{ app.company }}</div>
+      <div class="application-meta">Applied on: {{ app.applied_date }}</div>
+      <div>
+        {% for skill in app.skills %}
+        <span class="skill-tag">{{ skill }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    <div>
+      <span class="application-status 
+        {% if app.status == 'Applied' %}status-applied
+        {% elif app.status == 'Screening' %}status-screening
+        {% elif app.status == 'Interview' %}status-interview
+        {% elif app.status == 'Rejected' %}status-rejected
+        {% endif %}">
+        {{ app.status }}
+      </span>
+    </div>
+  </div>
+  {% endfor %}
 </div>
 
 
