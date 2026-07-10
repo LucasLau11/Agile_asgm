@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Job Details</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="brand">Job Portal</div>
+    <nav>
+      <a href="browse_job.html">Browse Jobs</a>
+      <a href="profile.html">My Profile</a>
+    </nav>
+  </header>
+  <div class="dev-user-bar" id="devUserBar"></div>
+
+  <main class="page" id="pageContent">
+    <p class="subtitle">Loading job…</p>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script>
+    renderDevUserBar("devUserBar");
+
+    const pageContent = document.getElementById("pageContent");
+    const jobId = new URLSearchParams(location.search).get("id");
+
+    async function loadJob() {
+      if (!jobId) {
+        pageContent.innerHTML = `<p class="status-msg error">No job selected. Go back to Browse Jobs.</p>`;
+        return;
+      }
+      try {
+        const job = await fetchJob(jobId);
+        const spotsLabel =
+          job.positions_remaining === 0
+            ? `<span class="spots-tag full">No spots left</span>`
+            : `<span class="spots-tag">${job.positions_remaining} of ${job.positions_available} spots open</span>`;
+
+        pageContent.innerHTML = `
+          <a href="browse_job.html" class="subtitle">&larr; Back to Browse Jobs</a>
+
+          <div class="detail-header" style="margin-top:14px">
+            <div>
+              <h1>${escapeHtml(job.title)}</h1>
+              <p class="subtitle" style="margin-bottom:4px;">
+                ${escapeHtml(job.location || "Location not specified")}
+                &nbsp;•&nbsp; ${escapeHtml(job.job_type || "Full-time")}
+              </p>
+              <p class="subtitle" style="margin-bottom:8px;">${escapeHtml(formatSalary(job.salary_min, job.salary_max))}</p>
+              ${spotsLabel}
+            </div>
+            ${trustSealHtml(job.credibility_score)}
+          </div>
+
+          <div style="margin:18px 0">
+            ${job.skills_required.map((s) => `<span class="skill-tag">${escapeHtml(s)}</span>`).join("")}
+          </div>
+
+          <div class="detail-description">${escapeHtml(job.description)}</div>
+
+          <div style="margin-top:20px">
+            <button class="btn btn-primary" id="applyBtn" ${job.positions_remaining === 0 ? "disabled" : ""}>
+              ${job.positions_remaining === 0 ? "No spots remaining" : "Apply for this job"}
+            </button>
+            <p class="status-msg" id="applyStatus"></p>
+          </div>
+        `;
+
+        document.getElementById("applyBtn").addEventListener("click", () => {
+          document.getElementById("applyStatus").textContent =
+            "Applying isn't wired up yet — that's Teammate C's endpoint (US-16), coming soon.";
+          document.getElementById("applyStatus").classList.add("error");
+        });
+      } catch (err) {
+        pageContent.innerHTML = `<p class="status-msg error">Couldn't load this job: ${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    loadJob();
+  </script>
+</body>
+</html>
