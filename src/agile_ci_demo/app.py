@@ -57,7 +57,7 @@ def create_item(item: Item) -> dict:
 def get_item(item_id: int) -> dict:
     item = items_db.get(item_id)
     if item is None:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail="Not found")
     return item
 
 
@@ -65,7 +65,7 @@ def get_item(item_id: int) -> dict:
 def mark_item_done(item_id: int) -> dict:
     item = items_db.get(item_id)
     if item is None:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail="Not found")
     item["done"] = True
     return item
 
