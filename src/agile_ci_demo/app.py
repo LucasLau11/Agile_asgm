@@ -1,9 +1,10 @@
 import os
 from typing import Dict, List, Any, Optional
-from fastapi import FastAPI, HTTPException, Request, Form, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, Form, UploadFile, File, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 app = FastAPI(title="Agile CI Demo", version="0.1.0")
 
@@ -18,49 +19,119 @@ app.mount("/UI/css", StaticFiles(directory=os.path.join(UI_DIR, "css")), name="c
 templates = Jinja2Templates(directory=os.path.join(UI_DIR, "html"))
 
 
-# --- Shared Mock Database (Central Applications Tracker) ---
-# Seeds the database with your specific original records so everything matches!
-applications_db: List[Dict[str, Any]] = [
-    {
-        "id": 1,
-        "seeker": "John Tan",
-        "email": "john.tan@email.com",
-        "job_title": "Backend Engineer",
-        "company": "ABC Technologies",
-        "skills": ["Python", "FastAPI", "SQL"],
-        "status": "Screening",
-        "applied_date": "10 July 2026",
-        "cover_letter": "Hi, I have 2 years of experience working with Python APIs.",
-        "experience": "2 years Software Development Experience",
-        "notes": ""
-    },
-    {
-        "id": 2,
-        "seeker": "Jane Lim",
-        "email": "jane.lim@email.com",
-        "job_title": "Frontend Developer",
-        "company": "XYZ Solutions",
-        "skills": ["React", "JavaScript"],
-        "status": "Interview",
-        "applied_date": "8 July 2026",
-        "cover_letter": "Excited to combine backend logic with modern frontends.",
-        "experience": "3 years Frontend Experience",
-        "notes": ""
-    },
-    {
-        "id": 3,
-        "seeker": "David Wong",
-        "email": "david.wong@email.com",
-        "job_title": "UI/UX Designer",
-        "company": "Creative Studio",
-        "skills": ["Figma", "Wireframe"],
-        "status": "Rejected",
-        "applied_date": "5 July 2026",
-        "cover_letter": "Passionate about creating accessible user interfaces.",
-        "experience": "1 year UI Design Intern Experience",
-        "notes": ""
-    }
-]
+# ---------------------------------------------------------------------------
+# Health check (needed by test_app.py::test_health)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Items API (Lau's feature — restored to coexist with the job-application
+# routes below). Backed by an in-memory dict, reset between tests via
+# reset_db().
+# ---------------------------------------------------------------------------
+
+
+class Item(BaseModel):
+    id: int
+    title: str
+    done: bool = False
+
+
+items_db: Dict[int, Dict[str, Any]] = {}
+
+
+@app.post("/items", status_code=status.HTTP_201_CREATED)
+def create_item(item: Item) -> dict:
+    if item.id in items_db:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Item ID already exists")
+    items_db[item.id] = item.model_dump()
+    return items_db[item.id]
+
+
+@app.get("/items/{item_id}")
+def get_item(item_id: int) -> dict:
+    item = items_db.get(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return item
+
+
+@app.patch("/items/{item_id}/done")
+def mark_item_done(item_id: int) -> dict:
+    item = items_db.get(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    item["done"] = True
+    return item
+
+
+# ---------------------------------------------------------------------------
+# Shared Mock Database (Central Applications Tracker) — teammate's feature
+# ---------------------------------------------------------------------------
+
+
+def _seed_applications() -> List[Dict[str, Any]]:
+    """Returns a fresh copy of the seed data, so reset_db() can restore it."""
+    return [
+        {
+            "id": 1,
+            "seeker": "John Tan",
+            "email": "john.tan@email.com",
+            "job_title": "Backend Engineer",
+            "company": "ABC Technologies",
+            "skills": ["Python", "FastAPI", "SQL"],
+            "status": "Screening",
+            "applied_date": "10 July 2026",
+            "cover_letter": "Hi, I have 2 years of experience working with Python APIs.",
+            "experience": "2 years Software Development Experience",
+            "notes": ""
+        },
+        {
+            "id": 2,
+            "seeker": "Jane Lim",
+            "email": "jane.lim@email.com",
+            "job_title": "Frontend Developer",
+            "company": "XYZ Solutions",
+            "skills": ["React", "JavaScript"],
+            "status": "Interview",
+            "applied_date": "8 July 2026",
+            "cover_letter": "Excited to combine backend logic with modern frontends.",
+            "experience": "3 years Frontend Experience",
+            "notes": ""
+        },
+        {
+            "id": 3,
+            "seeker": "David Wong",
+            "email": "david.wong@email.com",
+            "job_title": "UI/UX Designer",
+            "company": "Creative Studio",
+            "skills": ["Figma", "Wireframe"],
+            "status": "Rejected",
+            "applied_date": "5 July 2026",
+            "cover_letter": "Passionate about creating accessible user interfaces.",
+            "experience": "1 year UI Design Intern Experience",
+            "notes": ""
+        }
+    ]
+
+
+applications_db: List[Dict[str, Any]] = _seed_applications()
+
+
+def reset_db() -> None:
+    """Clears in-memory state between tests (called by test_app.py::setup_function).
+
+    Resets both the items store and the job-applications store, so tests
+    for either feature don't leak state into one another.
+    """
+    items_db.clear()
+    applications_db.clear()
+    applications_db.extend(_seed_applications())
 
 
 # --- Seeker Application Routes ---
@@ -74,7 +145,7 @@ async def get_apply_page(request: Request):
 @app.post("/apply")
 async def handle_application(
     request: Request,
-    cover_letter: str = Form(None), 
+    cover_letter: str = Form(None),
     resume: Optional[UploadFile] = File(None)
 ):
     """Handles applicant submissions safely and updates the centralized listing database."""
@@ -102,7 +173,7 @@ async def handle_application(
         "experience": "Entry Level Applicant",
         "notes": ""
     }
-    
+
     applications_db.append(new_app)
     return RedirectResponse(url="/my-applications", status_code=303)
 
@@ -110,20 +181,19 @@ async def handle_application(
 @app.get("/my-applications", response_class=HTMLResponse)
 async def my_applications(request: Request):
     """Renders your specific applications list dynamically."""
-    # Filter list to show Aisha's specific applications along with your seeded demo cards
     seeker_apps = [app for app in applications_db if app["seeker"] in ["Aisha", "Jane Lim", "David Wong"]]
     return templates.TemplateResponse(
-        request=request, 
-        name="my_application.html", 
+        request=request,
+        name="my_application.html",
         context={"applications": seeker_apps}
     )
 
 
-# 💡 FIX 404 Route Catchers: Reroutes static layout file strings automatically to prevent errors
 @app.get("/my_application.html")
 @app.get("/my_applications.html")
 async def explicit_my_application_redirect():
     return RedirectResponse(url="/my-applications", status_code=301)
+
 
 @app.get("/notifications", response_class=HTMLResponse)
 @app.get("/notifications.html")
@@ -138,8 +208,8 @@ async def get_notifications(request: Request):
 async def employer_applications(request: Request):
     """Renders overview board tracking incoming applications."""
     return templates.TemplateResponse(
-        request=request, 
-        name="employer_applications.html", 
+        request=request,
+        name="employer_applications.html",
         context={"applicants": applications_db}
     )
 
@@ -150,10 +220,10 @@ async def applicant_detail(request: Request, applicant_id: int):
     target_applicant = next((app for app in applications_db if app["id"] == applicant_id), None)
     if not target_applicant:
         raise HTTPException(status_code=404, detail="Applicant record not found.")
-        
+
     return templates.TemplateResponse(
-        request=request, 
-        name="applicant_detail.html", 
+        request=request,
+        name="applicant_detail.html",
         context={"applicant": target_applicant}
     )
 
