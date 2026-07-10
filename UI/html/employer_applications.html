@@ -8,8 +8,8 @@
 
 <title>View Applications</title>
 
-<link rel="stylesheet" href="/UI/css/style.css" />
-<link rel="stylesheet" href="/UI/css/application.css" />
+<link rel="stylesheet" href="../css/style.css" />
+<link rel="stylesheet" href="../css/application.css" />
 
 </head>
 
@@ -31,7 +31,7 @@ Job Portal
 Applications
 </a>
 
-<a href="browse_job.html">
+<a href="browse.html">
 Jobs
 </a>
 
@@ -113,79 +113,31 @@ Total Applications: <strong>3</strong>
 
 
 <div class="applicant-list">
-
-
-
-
-
-<!-- Applicant 1 -->
-
-<div class="applicant-card">
-
-
-<div class="applicant-header">
-
-
-<div class="applicant-name">
-
-John Tan
-
-</div>
-
-
-<span class="application-status status-screening">
-
-Screening
-
-</span>
-
-
-</div>
-
-
-
-
-<div class="applicant-info">
-
-
-<p>
-
-Email:
-john.tan@email.com
-
-</p>
-
-
-<p>
-
-Skills:
-
-<span class="skill-tag">
-Python
-</span>
-
-
-<span class="skill-tag">
-FastAPI
-</span>
-
-
-<span class="skill-tag">
-SQL
-</span>
-
-
-</p>
-
-
-<p>
-
-Applied Date:
-10 July 2026
-
-</p>
-
-
+  {% for applicant in applicants %}
+  <div class="applicant-card">
+    <div class="applicant-header">
+      <div class="applicant-name">{{ applicant.seeker }}</div>
+      <span class="application-status 
+        {% if applicant.status == 'Applied' %}status-applied
+        {% elif applicant.status == 'Screening' %}status-screening
+        {% elif applicant.status == 'Interview' %}status-interview
+        {% elif applicant.status == 'Rejected' %}status-rejected
+        {% endif %}">
+        {{ applicant.status }}
+      </span>
+    </div>
+    <div class="applicant-info">
+      <p>Email: {{ applicant.email }}</p>
+      <p>Skills: 
+        {% for skill in applicant.skills %}
+        <span class="skill-tag">{{ skill }}</span>
+        {% endfor %}
+      </p>
+      <p>Applied Date: {{ applicant.applied_date }}</p>
+    </div>
+    <a href="/employer/applicant/{{ applicant.id }}" class="btn btn-primary" style="text-decoration: none; display: inline-block; text-align: center; margin-top: 10px;">View Application</a>
+  </div>
+  {% endfor %}
 </div>
 
 

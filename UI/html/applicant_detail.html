@@ -8,10 +8,11 @@
 
 <title>Applicant Details</title>
 
-<link rel="stylesheet" href="/UI/css/application.css" />
+<link rel="stylesheet" href="../css/style.css" />
+<link rel="stylesheet" href="../css/application.css" />
 
 </head>
-ssss
+
 
 <body>
 
@@ -29,7 +30,7 @@ Job Portal
 Applications
 </a>
 
-<a href="browse_job.html">
+<a href="browse.html">
 Jobs
 </a>
 
@@ -76,66 +77,34 @@ Review candidate information and update recruitment progress.
 
 
 <div class="stage-box">
+  <h2>{{ applicant.seeker }}</h2>
+  <div class="application-meta">Applying for: <strong>{{ applicant.job_title }}</strong></div>
+  <br>
+  <p>Email: {{ applicant.email }}</p>
+  <p>Skills: 
+    {% for skill in applicant.skills %}
+    <span class="skill-tag">{{ skill }}</span>
+    {% endfor %}
+  </p>
+  
+  <h3 style="margin-top:20px;">Cover Letter</h3>
+  <p style="font-style: italic; background: #f9f9f9; padding: 12px; border-left: 3px solid #ccc;">
+    "{{ applicant.cover_letter }}"
+  </p>
 
-
-
-
-
-<!-- Applicant Information -->
-
-
-<h2>
-John Tan
-</h2>
-
-
-<div class="application-meta">
-
-Applying for:
-<strong>Backend Engineer</strong>
-
+  <form action="/employer/applicant/{{ applicant.id }}/update" method="POST" style="margin-top: 25px;">
+    <h3>Update Recruitment Stage</h3>
+    <select name="stage" class="stage-select">
+      <option value="Applied" {% if applicant.status == 'Applied' %}selected{% endif %}>Applied</option>
+      <option value="Screening" {% if applicant.status == 'Screening' %}selected{% endif %}>Screening</option>
+      <option value="Interview" {% if applicant.status == 'Interview' %}selected{% endif %}>Interview</option>
+      <option value="Offered" {% if applicant.status == 'Offered' %}selected{% endif %}>Offered</option>
+      <option value="Rejected" {% if applicant.status == 'Rejected' %}selected{% endif %}>Rejected</option>
+    </select>
+    <br><br>
+    <button type="submit" class="btn btn-primary">Save Changes</button>
+  </form>
 </div>
-
-
-<br>
-
-
-<p>
-
-Email:
-john.tan@email.com
-
-</p>
-
-
-<p>
-
-Experience:
-2 years Software Development Experience
-
-</p>
-
-
-
-
-<h3>
-Skills
-</h3>
-
-
-<span class="skill-tag">
-Python
-</span>
-
-
-<span class="skill-tag">
-FastAPI
-</span>
-
-
-<span class="skill-tag">
-SQL
-</span>
 
 
 
