@@ -174,7 +174,10 @@ function renderJobs() {
     });
 
     if (filtered.length === 0) {
-        list.innerHTML = `<div class="empty-state">No job postings match your search.</div>`;
+        const message = jobs.length === 0
+            ? "No job postings yet. Click \u201c+ New Job\u201d to create your first one."
+            : "No job postings match your search.";
+        list.innerHTML = `<div class="empty-state">${message}</div>`;
         return;
     }
 
@@ -210,10 +213,17 @@ function jobCardTemplate(job) {
         statusClass = "status-msg error";
         actionButtons = `
             <button class="btn btn-secondary" onclick="viewJob(${job.id})">View</button>
-            <button class="btn btn-secondary" onclick="duplicateJob(${job.id})">Duplicate</button>
             <button class="btn btn-secondary" onclick="deleteJob(${job.id})">Delete</button>
         `;
-    }
+    } else if (job.status === "draft") {
+    statusMsg = "Draft • Not Published";
+    actionButtons = `
+        <button class="btn btn-secondary" onclick="openForm(${job.id})">Edit</button>
+        <button class="btn btn-secondary" onclick="viewJob(${job.id})">View</button>
+        <button class="btn btn-primary" onclick="publishJob(${job.id})">Publish</button>
+        <button class="btn btn-secondary" onclick="deleteJob(${job.id})">Delete</button>
+    `;
+}
 
     return `
         <div class="job-card" data-status="${job.status}" data-id="${job.id}">
@@ -326,7 +336,8 @@ function addSkillFromInput() {
     const input = document.getElementById("formSkillInput");
     const value = input.value.trim();
 
-    if (value && !formSkillsList.includes(value)) {
+    const alreadyExists = formSkillsList.some(s => s.toLowerCase() === value.toLowerCase());
+    if (value && !alreadyExists) {
         formSkillsList.push(value);
         renderFormSkills();
     }
@@ -360,8 +371,28 @@ function saveJob() {
         formError("Job title is required.");
         return;
     }
+    if (title.length > 80) {
+        formError("Job title must be under 80 characters.");
+        return;
+    }
     if (!location) {
         formError("Location is required.");
+        return;
+    }
+    if (formSkillsList.length === 0) {
+        formError("Add at least one required skill.");
+        return;
+    }
+    if (description.length < 20) {
+        formError("Please provide a more detailed description (at least 20 characters).");
+        return;
+    }
+
+    const isDuplicate = jobs.some(j =>
+        j.title.trim().toLowerCase() === title.toLowerCase() && j.id !== editingJobId
+    );
+    if (isDuplicate) {
+        formError("A job posting with this title already exists.");
         return;
     }
 
@@ -416,25 +447,22 @@ function closeJob(id) {
     const job = findJob(id);
     if (!job) return;
 
+    const confirmed = confirm(`Close "${job.title}"? It will stop accepting applications.`);
+    if (!confirmed) return;
+
     job.status = "closed";
     renderJobs();
 }
 
-function duplicateJob(id) {
+
+function deleteJob(id) {
     const job = findJob(id);
     if (!job) return;
 
-    jobs.push({
-        ...job,
-        id: nextId++,
-        status: "draft",
-        applications: 0
-    });
-    renderJobs();
-}
+    const confirmed = confirm(`Delete "${job.title}"? This can't be undone.`);
+    if (!confirmed) return;
 
-function deleteJob(id) {
-    jobs = jobs.filter(job => job.id !== id);
+    jobs = jobs.filter(j => j.id !== id);
     renderJobs();
 }
 
