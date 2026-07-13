@@ -29,10 +29,18 @@ from job_portal.schemas import (
     ExperienceIn,
     ExperienceOut,
     JobOut,
+    ParsedResumeOut,
     ProfileInfoUpdate,
     SeekerProfileOut,
     SkillsUpdate,
 )
+from job_portal.services.file_validation import (
+    ALLOWED_EXTENSIONS,
+    MAX_RESUME_SIZE_BYTES,
+    detect_safe_extension,
+    sanitize_display_filename,
+)
+from job_portal.services.resume_parser import parse_resume
 
 router = APIRouter(tags=["seeker"])
 
@@ -40,9 +48,6 @@ router = APIRouter(tags=["seeker"])
 # In a later sprint this can be swapped for Supabase Storage without
 # changing the route logic below — only this constant + the save step.
 RESUME_UPLOAD_DIR = os.getenv("RESUME_UPLOAD_DIR", "uploads/resumes")
-ALLOWED_RESUME_TYPES = {"application/pdf", "application/msword",
-                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
-MAX_RESUME_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
 def _get_or_create_profile(db: Session, seeker_id: int) -> SeekerProfile:
@@ -335,31 +340,82 @@ async def upload_resume(
     """
     US-03: Upload a resume file (PDF or Word doc, max 5 MB).
 
+    SECURITY: we deliberately do NOT trust file.content_type (a browser-set
+    header, trivially spoofable) or use file.filename to build the saved
+    path (attacker-controlled — a path-traversal risk). Instead we sniff
+    the file's actual magic bytes to confirm it's really a PDF/DOC/DOCX,
+    and always generate the saved filename ourselves from a UUID. The
+    original filename is kept ONLY for display, after being stripped of
+    any path components.
+
     Sprint 1 stores the file on local disk under RESUME_UPLOAD_DIR and keeps
     the path in the DB. Swappable for Supabase Storage later without touching
     the calling code on the frontend.
     """
-    if file.content_type not in ALLOWED_RESUME_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail="Resume must be a PDF or Word document (.pdf, .doc, .docx).",
-        )
-
     contents = await file.read()
+
     if len(contents) > MAX_RESUME_SIZE_BYTES:
         raise HTTPException(status_code=400, detail="Resume must be under 5 MB.")
 
+    safe_extension = detect_safe_extension(contents)
+    if safe_extension is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Resume must be a genuine PDF or Word document (.pdf, .doc, .docx). "
+            "The file's content didn't match any of those formats.",
+        )
+
     os.makedirs(RESUME_UPLOAD_DIR, exist_ok=True)
-    extension = os.path.splitext(file.filename or "")[1] or ".pdf"
-    stored_name = f"{seeker_id}_{uuid.uuid4().hex}{extension}"
+    # Filename is built ENTIRELY server-side — seeker_id (int, safe) + a
+    # random UUID + the extension WE detected from real content, never
+    # anything derived from the client-supplied filename.
+    stored_name = f"{seeker_id}_{uuid.uuid4().hex}{safe_extension}"
     stored_path = os.path.join(RESUME_UPLOAD_DIR, stored_name)
 
     with open(stored_path, "wb") as f:
         f.write(contents)
 
     profile = _get_or_create_profile(db, seeker_id)
-    profile.resume_filename = file.filename
+    profile.resume_filename = sanitize_display_filename(file.filename)
     profile.resume_url = stored_path
     db.commit()
     db.refresh(profile)
     return SeekerProfileOut.from_profile(profile)
+
+
+@router.get("/api/seekers/{seeker_id}/resume/parse", response_model=ParsedResumeOut)
+def parse_seeker_resume(seeker_id: int, db: Session = Depends(get_db)) -> ParsedResumeOut:
+    """
+    Scan the seeker's already-uploaded resume and extract suggested profile
+    data (name, email, phone, skills) using lightweight text extraction +
+    pattern matching (see services/resume_parser.py for the full approach
+    and its honest limitations).
+
+    Returns suggestions ONLY — nothing here is written to the database.
+    The frontend shows these to the user, who chooses what to actually
+    apply via the existing profile/skills update endpoints.
+    """
+    profile = db.query(SeekerProfile).filter(SeekerProfile.seeker_id == seeker_id).first()
+    if profile is None or not profile.resume_url:
+        raise HTTPException(status_code=404, detail="No resume uploaded yet for this seeker.")
+
+    if not os.path.exists(profile.resume_url):
+        raise HTTPException(status_code=404, detail="Resume file is missing from storage.")
+
+    extension = os.path.splitext(profile.resume_url)[1]
+    if extension not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Unsupported resume format for scanning.")
+
+    with open(profile.resume_url, "rb") as f:
+        contents = f.read()
+
+    result = parse_resume(contents, extension)
+    return ParsedResumeOut(
+        full_name=result.full_name,
+        email=result.email,
+        phone=result.phone,
+        skills=result.skills,
+        experience=result.experience,
+        education=result.education,
+        text_extracted=result.raw_text_extracted,
+    )
