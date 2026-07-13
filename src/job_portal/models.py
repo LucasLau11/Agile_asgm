@@ -127,3 +127,39 @@ class Education(Base):
 
 
 # --- Teammate C: add Application and Notification classes below this line ---
+class Application(Base):
+    """Job application records (Teammate C module)."""
+
+    __tablename__ = "applications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    seeker_id = Column(Integer, nullable=False, index=True, default=1)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True, index=True)
+    seeker_name = Column(String(150), nullable=False, default="Aisha")
+    email = Column(String(150), nullable=True, default="aisha@email.com")
+    job_title = Column(String(200), nullable=False, default="Backend Engineer")
+    company_name = Column(String(150), nullable=False, default="ABC Technologies")
+    skills = Column(String(250), nullable=True, default="Python, FastAPI, SQL")
+    status = Column(String(50), nullable=False, default="Applied")  # Applied, Screening, Interview, Rejected, Offered
+    applied_date = Column(String(50), nullable=False, default="10 July 2026")
+    cover_letter = Column(Text, nullable=True, default="")
+    experience = Column(Text, nullable=True, default="")
+    notes = Column(Text, nullable=True, default="")
+
+    # Relationship back to target positions if available
+    job = relationship("Job", back_populates="applications" if hasattr(Job, "applications") else None)
+
+class Notification(Base):
+    """Notifications sent to a seeker when their application status changes."""
+ 
+    __tablename__ = "notifications"
+ 
+    id = Column(Integer, primary_key=True, index=True)
+    seeker_id = Column(Integer, nullable=False, index=True, default=1)
+    application_id = Column(Integer, ForeignKey("applications.id"), nullable=True, index=True)
+    title = Column(String(200), nullable=False, default="")
+    message = Column(Text, nullable=False, default="")
+    is_read = Column(Integer, nullable=False, default=0)  # 0 = unread, 1 = read
+    created_at = Column(DateTime, default=datetime.utcnow)
+ 
+    application = relationship("Application")

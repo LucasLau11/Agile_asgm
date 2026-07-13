@@ -1,291 +1,98 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-<title>Notifications</title>
-
-<link rel="stylesheet" href="../css/style.css" />
-<link rel="stylesheet" href="../css/application.css" />
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Notifications</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/application.css" />
 </head>
-
-
-
 <body>
 
-
-<header class="topbar">
-
-<div class="brand">
-Job Portal
-</div>
-
-
-<nav>
-
-<a href="browse.html">
-Browse Jobs
-</a>
-
-
-<a href="my_applications.html">
-My Applications
-</a>
-
-
-<a href="notifications.html">
-Notifications
-</a>
-
-
-<a href="profile.html">
-Profile
-</a>
-
-</nav>
-
-
-</header>
-
-
-
-
-<div class="dev-user-bar">
-
-Acting as: Seeker #1 — Aisha
-
-<span style="opacity:0.75">
-(login stand-in for Sprint 1)
-</span>
-
-</div>
-
-
-
-
-
-<main class="page">
-
-
-<h1>
-Notifications
-</h1>
-
-
-<p class="subtitle">
-Stay updated with your application progress.
-</p>
-
-
-
-
-
-<div class="notification-list">
-
-
-
-
-
-<!-- Notification 1 -->
-
-<div class="notification-card">
-
-
-<div class="notification-icon">
-
-🔔
-
-</div>
-
-
-
-<div class="notification-content">
-
-
-<h3>
-Application moved to Interview
-</h3>
-
-
-<p>
-
-Your application for <strong>Frontend Developer</strong>
-has progressed to the Interview stage.
-
-</p>
-
-
-<div class="notification-time">
-
-2 hours ago
-
-</div>
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-
-<!-- Notification 2 -->
-
-
-<div class="notification-card">
-
-
-<div class="notification-icon">
-
-🔔
-
-</div>
-
-
-
-<div class="notification-content">
-
-
-<h3>
-Application Under Review
-</h3>
-
-
-<p>
-
-ABC Technologies is currently reviewing your application
-for Backend Engineer.
-
-</p>
-
-
-<div class="notification-time">
-
-Yesterday
-
-</div>
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-
-
-<!-- Notification 3 -->
-
-
-<div class="notification-card">
-
-
-<div class="notification-icon">
-
-🔔
-
-</div>
-
-
-
-<div class="notification-content">
-
-
-<h3>
-Application Rejected
-</h3>
-
-
-<p>
-
-Your application for UI/UX Designer was not selected.
-
-</p>
-
-
-<div class="notification-time">
-
-3 days ago
-
-</div>
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-
-
-<!-- Notification 4 -->
-
-
-<div class="notification-card">
-
-
-<div class="notification-icon">
-
-🔔
-
-</div>
-
-
-
-<div class="notification-content">
-
-
-<h3>
-Offer Received
-</h3>
-
-
-<p>
-
-Congratulations! You received an offer from
-Creative Studio.
-
-</p>
-
-
-<div class="notification-time">
-
-5 days ago
-
-</div>
-
-
-</div>
-
-
-</div>
-
-
-
-
-
-
-</div>
-
-
-
-</main>
-
-
-
+  <header class="topbar">
+    <div class="brand">Job Portal</div>
+    <nav>
+      <a href="browse_job.html">Browse Jobs</a>
+      <a href="my_application.html">My Applications</a>
+      <a href="notifications.html" class="active">Notifications</a>
+      <a href="profile.html">Profile</a>
+    </nav>
+  </header>
+
+  <div class="dev-user-bar" id="devUserBar"></div>
+
+  <main class="page">
+    <h1>Notifications</h1>
+    <p class="subtitle">Stay updated with your application progress.</p>
+
+    <div class="notification-list" id="notificationList">
+      <p class="subtitle">Loading notifications...</p>
+    </div>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script>
+    const seekerId = (typeof getCurrentSeekerId === "function") ? getCurrentSeekerId() : 1;
+    if (typeof renderDevUserBar === "function") {
+      renderDevUserBar("devUserBar");
+    } else {
+      document.getElementById("devUserBar").innerHTML = `
+        Acting as: Seeker #${seekerId} — Aisha
+        <span style="opacity:0.75">(login stand-in for Sprint 1)</span>
+      `;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function notificationCardHtml(note) {
+      return `
+        <div class="notification-card">
+          <div class="notification-icon">🔔</div>
+          <div class="notification-content">
+            <h3>${escapeHtml(note.title)}</h3>
+            <p>${escapeHtml(note.message)}</p>
+            <div class="notification-time">${escapeHtml(note.time_ago)}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function loadNotifications() {
+      const listEl = document.getElementById("notificationList");
+      try {
+        const response = await fetch(`/api/notifications?seeker_id=${seekerId}`);
+        if (!response.ok) throw new Error("Failed to pull database entries");
+        const notifications = await response.json();
+
+        if (notifications.length === 0) {
+          listEl.innerHTML = `
+            <p class="subtitle" style="text-align:center; color:#777; margin-top:30px;">
+              You don't have any notifications yet.
+            </p>
+          `;
+          return;
+        }
+
+        listEl.innerHTML = notifications.map(notificationCardHtml).join("");
+      } catch (err) {
+        console.error(err);
+        listEl.innerHTML = `
+          <p class="status-msg error">
+            Couldn't load notifications: ${escapeHtml(err.message)}. Is the FastAPI server running?
+          </p>
+        `;
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", loadNotifications);
+  </script>
 </body>
-
 </html>
