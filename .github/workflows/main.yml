@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main, master]
 
+# dorny/test-reporter needs write access to publish check results and
+# annotate the commit/PR with the pass/fail report.
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -31,4 +38,16 @@ jobs:
           # src-layout discovery yet — mirrors seed.py's manual
           # sys.path.insert(0, "src").
           PYTHONPATH: src
-        run: pytest -v
+        # `if: always()`-friendly: continue to the report step below even
+        # if some tests fail, so the report actually shows the failures
+        # instead of the job just stopping.
+        run: pytest -vv --junitxml=test-results.xml
+
+      - name: Publish test report
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Pytest Results
+          path: test-results.xml
+          reporter: java-junit
+          fail-on-error: "true"
