@@ -1,19 +1,3 @@
-"""
-Teammate B's routes: job discovery + seeker profile.
-
-Covers:
-  US-03  Upload resume
-  US-12  Search jobs by keyword
-  US-13  Filter jobs by location
-  US-20  View job postings
-  US-21  View job details
-  US-22  Maintain skill profile
-
-Sprint 1 extension: advanced filters (state, salary, job type), positions
-remaining display, resume/skill-based job recommendations, and a fuller
-seeker profile (personal info + work experience + education).
-"""
-
 import os
 import uuid
 from typing import List, Optional
@@ -45,18 +29,11 @@ from job_portal.services.resume_parser import parse_resume
 
 router = APIRouter(tags=["seeker"])
 
-# Where uploaded resumes get stored for Sprint 1 (local disk).
-# In a later sprint this can be swapped for Supabase Storage without
-# changing the route logic below — only this constant + the save step.
+# Where uploaded resumes get stored local disk.
 RESUME_UPLOAD_DIR = os.getenv("RESUME_UPLOAD_DIR", "uploads/resumes")
 
-
+# fetch a seeker's profile, creating an empty one if it doesn't exist yet.
 def _get_or_create_profile(db: Session, seeker_id: int) -> SeekerProfile:
-    """Helper: fetch a seeker's profile, creating an empty one if it doesn't exist yet.
-
-    This matters because there's no registration flow yet (Sprint 3) — so the
-    first time a seeker touches their profile, we create the row on the fly.
-    """
     profile = db.query(SeekerProfile).filter(SeekerProfile.seeker_id == seeker_id).first()
     if profile is None:
         profile = SeekerProfile(seeker_id=seeker_id, skills="")
@@ -66,11 +43,7 @@ def _get_or_create_profile(db: Session, seeker_id: int) -> SeekerProfile:
     return profile
 
 
-# ---------------------------------------------------------------------------
-# US-20 / US-12 / US-13 — Browse, search, and filter job postings
-# (extended with state / salary / job_type filters)
-# ---------------------------------------------------------------------------
-
+# Browse, search, and filter job postings
 
 @router.get("/api/jobs", response_model=List[JobOut])
 def list_jobs(
@@ -82,18 +55,7 @@ def list_jobs(
     salary_max: Optional[int] = None,
     db: Session = Depends(get_db),
 ) -> List[JobOut]:
-    """
-    List job postings, optionally filtered. All filters combine with AND logic.
-
-    - No params  -> US-20: view all open job postings.
-    - `keyword`   -> US-12: matches against title OR description (case-insensitive).
-    - `location`  -> US-13: matches against location (case-insensitive, partial match).
-    - `state`     -> advanced filter: exact match against the job's state/region.
-    - `job_type`  -> advanced filter: exact match (Full-time / Part-time / Contract / Internship / Remote).
-    - `salary_min`, `salary_max` -> advanced filter: keep jobs whose salary range
-      OVERLAPS the requested range (not just contained within it), so e.g. a job
-      paying RM4000-6000 still shows up if you search for RM5000-8000.
-    """
+   
     query = db.query(Job).filter(Job.status == "open")
 
     if keyword:
@@ -123,31 +85,13 @@ def list_jobs(
         for job in jobs
     ]
 
-
-# ---------------------------------------------------------------------------
-# Resume/skill-based job matching (fulfils the "so the system can match me
-# with suitable jobs" part of US-22)
-#
-# IMPORTANT: this route MUST be declared before `/api/jobs/{job_id}` below.
-# FastAPI matches routes in declaration order, and "/api/jobs/recommended"
-# would otherwise get swallowed by "/api/jobs/{job_id}" (with job_id literally
-# set to the string "recommended", which then fails to parse as an int).
-# ---------------------------------------------------------------------------
-
-
+# Resume/skill-based job matching 
 def _match_percentage(seeker_skills: list[str], job_skills: list[str]) -> int:
     """
     Simple overlap-based matching algorithm.
 
     Score = (number of the job's required skills that the seeker has)
              / (total number of the job's required skills) * 100
-
-    This deliberately measures "how much of what THIS JOB wants do I have",
-    not the other way around — a seeker with 20 skills shouldn't be penalised
-    for a job that only lists 2 required skills. Jobs with no listed skills
-    are treated as a weak/no match (they give recruiters no way to compare).
-
-    Case-insensitive so "python" and "Python" count as the same skill.
     """
     if not job_skills:
         return 0
@@ -166,13 +110,7 @@ def recommended_jobs(
     limit: int = 10,
     db: Session = Depends(get_db),
 ) -> List[JobOut]:
-    """
-    Recommend open jobs based on overlap between the seeker's saved skills
-    and each job's required skills. Returns jobs sorted by match percentage
-    (highest first), excluding jobs below `min_match`% (default: any match
-    at all). Returns an empty list if the seeker has no skills saved yet —
-    the frontend should hide the "Recommended for you" section in that case.
-    """
+    
     profile = db.query(SeekerProfile).filter(SeekerProfile.seeker_id == seeker_id).first()
     seeker_skills = profile.skills_list() if profile else []
     if not seeker_skills:
@@ -203,11 +141,6 @@ def get_job(job_id: int, db: Session = Depends(get_db)) -> JobOut:
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return JobOut.from_job(job, credibility_score=compute_credibility_score(job, db))
-
-
-# ---------------------------------------------------------------------------
-# US-22 — Maintain skill profile + personal info (profile upgrade)
-# ---------------------------------------------------------------------------
 
 
 @router.get("/api/seekers/{seeker_id}", response_model=SeekerProfileOut)
@@ -244,12 +177,7 @@ def update_skills(
     db.refresh(profile)
     return SeekerProfileOut.from_profile(profile)
 
-
-# ---------------------------------------------------------------------------
-# Work experience (part of the "real profile" upgrade)
-# ---------------------------------------------------------------------------
-
-
+# Work experience 
 @router.post("/api/seekers/{seeker_id}/experience", response_model=SeekerProfileOut, status_code=201)
 def add_experience(
     seeker_id: int, payload: ExperienceIn, db: Session = Depends(get_db)
@@ -280,11 +208,7 @@ def delete_experience(
     return SeekerProfileOut.from_profile(profile)
 
 
-# ---------------------------------------------------------------------------
-# Education (part of the "real profile" upgrade)
-# ---------------------------------------------------------------------------
-
-
+# Education
 @router.post("/api/seekers/{seeker_id}/education", response_model=SeekerProfileOut, status_code=201)
 def add_education(
     seeker_id: int, payload: EducationIn, db: Session = Depends(get_db)
@@ -315,30 +239,12 @@ def delete_education(
     return SeekerProfileOut.from_profile(profile)
 
 
-# ---------------------------------------------------------------------------
 # US-03 — Upload resume
-# ---------------------------------------------------------------------------
-
-
 @router.post("/api/seekers/{seeker_id}/resume", response_model=SeekerProfileOut, status_code=201)
 async def upload_resume(
     seeker_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)
 ) -> SeekerProfileOut:
-    """
-    US-03: Upload a resume file (PDF or Word doc, max 5 MB).
 
-    SECURITY: we deliberately do NOT trust file.content_type (a browser-set
-    header, trivially spoofable) or use file.filename to build the saved
-    path (attacker-controlled — a path-traversal risk). Instead we sniff
-    the file's actual magic bytes to confirm it's really a PDF/DOC/DOCX,
-    and always generate the saved filename ourselves from a UUID. The
-    original filename is kept ONLY for display, after being stripped of
-    any path components.
-
-    Sprint 1 stores the file on local disk under RESUME_UPLOAD_DIR and keeps
-    the path in the DB. Swappable for Supabase Storage later without touching
-    the calling code on the frontend.
-    """
     contents = await file.read()
 
     if len(contents) > MAX_RESUME_SIZE_BYTES:
@@ -353,9 +259,6 @@ async def upload_resume(
         )
 
     os.makedirs(RESUME_UPLOAD_DIR, exist_ok=True)
-    # Filename is built ENTIRELY server-side — seeker_id (int, safe) + a
-    # random UUID + the extension WE detected from real content, never
-    # anything derived from the client-supplied filename.
     stored_name = f"{seeker_id}_{uuid.uuid4().hex}{safe_extension}"
     stored_path = os.path.join(RESUME_UPLOAD_DIR, stored_name)
 
@@ -377,10 +280,6 @@ def parse_seeker_resume(seeker_id: int, db: Session = Depends(get_db)) -> Parsed
     data (name, email, phone, skills) using lightweight text extraction +
     pattern matching (see services/resume_parser.py for the full approach
     and its honest limitations).
-
-    Returns suggestions ONLY — nothing here is written to the database.
-    The frontend shows these to the user, who chooses what to actually
-    apply via the existing profile/skills update endpoints.
     """
     profile = db.query(SeekerProfile).filter(SeekerProfile.seeker_id == seeker_id).first()
     if profile is None or not profile.resume_url:

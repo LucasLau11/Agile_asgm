@@ -1,33 +1,3 @@
-"""
-US-11: Job posting credibility score.
-
-Replaces the temporary `_placeholder_score()` that lived in
-job_portal/routers/seeker.py. That placeholder gave every job a fixed
-score based only on 4 yes/no checks on the job row itself (does it have
-a location, a long-enough description, etc). It never varied with the
-employer's actual track record, so a brand-new employer's very first
-post scored identically to a repeat employer with a long history — not
-a real signal of trustworthiness.
-
-This version scores a job on two kinds of signal:
-
-  1. Posting completeness/quality — does this specific posting look
-     like a real, well-specified vacancy (has description, location,
-     skills, a sane salary range, a sane number of open positions)?
-
-  2. Employer track record — how many jobs has this employer_id posted
-     in total? An employer with a longer posting history is a stronger
-     trust signal than a one-off, brand-new employer_id. (We don't have
-     an `employers` table with verification/age fields yet — this is
-     the best proxy available from the current schema. If/when an
-     Employer model is added, e.g. `is_verified`, `created_at`, that
-     should be folded in here too.)
-
-Usage:
-    from job_portal.services.credibility import compute_credibility_score
-    score = compute_credibility_score(job, db)
-"""
-
 from sqlalchemy.orm import Session
 
 from job_portal.models import Job
@@ -61,8 +31,6 @@ def _completeness_score(job: Job) -> int:
 def _salary_sanity_score(job: Job) -> int:
     lo, hi = job.salary_min, job.salary_max
     if lo is None and hi is None:
-        # No salary listed at all — neutral, not penalized twice
-        # (already reflected in completeness above).
         return 0
     if lo is not None and lo <= 0:
         return 0
@@ -91,13 +59,6 @@ def _track_record_score(job: Job, db: Session) -> int:
 
 
 def compute_credibility_score(job: Job, db: Session) -> int:
-    """
-    Compute a 0-100 credibility score for a single job posting.
-
-    Requires a live db session (unlike the old placeholder) because the
-    employer track record component needs to look up how many other
-    jobs this employer_id has posted.
-    """
     score = (
         _completeness_score(job)
         + _salary_sanity_score(job)

@@ -10,22 +10,14 @@ from pytest_bdd import given as bdd_given, parsers, scenarios, then as bdd_then,
 
 from agile_ci_demo.app import app, reset_db
 
-# --- Test client fixture -----------------------------------------------------
-
-
 @pytest.fixture
 def client() -> TestClient:
     """
     Shared FastAPI test client.
 
-    We reset the in-memory DB before every test so tests stay independent.
     """
     reset_db()
     return TestClient(app)
-
-
-# --- 1. Basic acceptance tests (docstring Given/When/Then) -------------------
-
 
 def test_health(client: TestClient) -> None:
     """
@@ -104,9 +96,6 @@ def test_mark_done(client: TestClient) -> None:
     assert body["done"] is True
 
 
-# --- 2. Negative / edge-case tests ------------------------------------------
-
-
 def test_get_missing_item_returns_404(client: TestClient) -> None:
     """
     Negative test: Getting a non-existent item
@@ -153,9 +142,6 @@ def test_mark_done_twice_keeps_item_done(client: TestClient) -> None:
     assert r2.json()["done"] is True
 
 
-# --- 3. Parametrized tests (multiple examples) -------------------------------
-
-
 @pytest.mark.parametrize(
     "item_id,title",
     [
@@ -183,9 +169,6 @@ def test_create_multiple_items(client: TestClient, item_id: int, title: str) -> 
     assert data["done"] is False
 
 
-# --- 4. Property-based test (many random inputs) -----------------------------
-
-
 @hypothesis_given(
     item_id=st.integers(min_value=1, max_value=100_000),
     title=st.text(min_size=1, max_size=50),
@@ -206,25 +189,12 @@ def test_create_item_with_many_random_inputs(item_id: int, title: str) -> None:
     assert response.status_code in (201, 409)
 
 
-# --- 5. BDD-style tests with pytest-bdd --------------------------------------
-# Feature file: tests/features/items.feature
-#
-# This demonstrates how to connect Gherkin feature files to step functions.
-
-
-# Load all scenarios from the feature file.
-# The path is relative to THIS test file. We assume:
-#   tests/
-#     test_acceptance_items.py
-#     features/
-#       items.feature
 scenarios("features/items.feature")
 
 
-# Shared context for BDD steps
 class Context:
     def __init__(self) -> None:
-        self.last_response = None  # type: ignore[assignment]
+        self.last_response = None  
 
 
 @pytest.fixture

@@ -3,12 +3,6 @@ Seed script: populates the local dev database with sample jobs (across a
 spread of states, salaries, and job types so the new filters have something
 real to filter) plus a sample seeker profile so the recommendation engine
 has data to work with.
-
-Run from the repo root (the folder that contains src/, UI/, pyproject.toml):
-    python seed.py        (PowerShell)
-    python3 seed.py       (bash/Mac/Linux)
-
-Safe to re-run — it clears existing jobs/profiles first.
 """
 
 import sys

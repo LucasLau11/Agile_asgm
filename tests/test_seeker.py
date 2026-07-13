@@ -1,21 +1,6 @@
-"""
-Acceptance tests for Teammate B's user stories.
-
-Style follows the tutor's demo repo: Given/When/Then docstrings on each
-test, using FastAPI's TestClient against a throwaway SQLite DB (see
-conftest.py). One test per user story's happy path, plus a few negative
-cases — mirrors the "basic + negative + parametrized" structure from
-tests/test_acceptance_items.py in the teaching template.
-"""
-
 import io
 
 from job_portal.models import Job
-
-# ---------------------------------------------------------------------------
-# US-20: View job postings
-# ---------------------------------------------------------------------------
-
 
 def test_list_jobs_returns_open_postings(client, sample_job):
     """
@@ -47,11 +32,6 @@ def test_list_jobs_empty_when_no_postings(client):
     assert r.json() == []
 
 
-# ---------------------------------------------------------------------------
-# US-12: Search jobs by keyword
-# ---------------------------------------------------------------------------
-
-
 def test_search_by_keyword_matches_title(client, sample_job):
     """
     US-12: Search jobs using keywords
@@ -76,11 +56,6 @@ def test_search_by_keyword_no_match_returns_empty(client, sample_job):
     r = client.get("/api/jobs?keyword=nonexistentrole")
     assert r.status_code == 200
     assert r.json() == []
-
-
-# ---------------------------------------------------------------------------
-# US-13: Filter jobs by location
-# ---------------------------------------------------------------------------
 
 
 def test_filter_by_location(client, sample_job):
@@ -121,11 +96,6 @@ def test_keyword_and_location_combine_with_and_logic(client, db_session):
     assert results[0]["location"] == "Penang"
 
 
-# ---------------------------------------------------------------------------
-# US-21: View job details
-# ---------------------------------------------------------------------------
-
-
 def test_get_job_details(client, sample_job):
     """
     US-21: View detailed job description
@@ -151,11 +121,6 @@ def test_get_missing_job_returns_404(client):
     """
     r = client.get("/api/jobs/999")
     assert r.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# US-22: Maintain skill profile
-# ---------------------------------------------------------------------------
 
 
 def test_update_skills_creates_profile_on_first_use(client):
@@ -198,11 +163,6 @@ def test_update_skills_strips_blank_entries(client):
     r = client.put("/api/seekers/8/skills", json={"skills": ["Python", "  ", ""]})
     assert r.status_code == 200
     assert r.json()["skills"] == ["Python"]
-
-
-# ---------------------------------------------------------------------------
-# US-03: Upload resume
-# ---------------------------------------------------------------------------
 
 
 def test_upload_resume_pdf_succeeds(client, tmp_path):
@@ -254,11 +214,6 @@ def test_upload_resume_rejects_oversized_file(client):
         files={"file": ("big_resume.pdf", oversized, "application/pdf")},
     )
     assert r.status_code == 400
-
-
-# ---------------------------------------------------------------------------
-# Advanced filters: state, job_type, salary range
-# ---------------------------------------------------------------------------
 
 
 def test_filter_by_state(client, db_session):
@@ -340,11 +295,6 @@ def test_filter_by_salary_range_excludes_non_overlapping(client, db_session):
     assert r.json() == []
 
 
-# ---------------------------------------------------------------------------
-# Positions remaining ("spots left" display)
-# ---------------------------------------------------------------------------
-
-
 def test_positions_remaining_computed_correctly(client, db_session):
     """
     Given a job with 3 available positions and 1 already filled
@@ -376,11 +326,6 @@ def test_positions_remaining_never_negative(client, db_session):
 
     r = client.get(f"/api/jobs/{job.id}")
     assert r.json()["positions_remaining"] == 0
-
-
-# ---------------------------------------------------------------------------
-# Resume/skill-based job matching
-# ---------------------------------------------------------------------------
 
 
 def test_recommended_jobs_scores_by_skill_overlap(client, db_session):
@@ -432,11 +377,6 @@ def test_recommended_jobs_empty_when_seeker_has_no_skills(client):
     assert r.json() == []
 
 
-# ---------------------------------------------------------------------------
-# Profile info (name/email/phone/bio)
-# ---------------------------------------------------------------------------
-
-
 def test_update_profile_info(client):
     """
     Given a seeker fills in their personal details
@@ -451,11 +391,6 @@ def test_update_profile_info(client):
     body = r.json()
     assert body["full_name"] == "Jane Doe"
     assert body["email"] == "jane@test.com"
-
-
-# ---------------------------------------------------------------------------
-# Work experience
-# ---------------------------------------------------------------------------
 
 
 def test_add_and_delete_experience(client):
@@ -489,11 +424,6 @@ def test_delete_experience_not_found_returns_404(client):
     assert r.status_code == 404
 
 
-# ---------------------------------------------------------------------------
-# Education
-# ---------------------------------------------------------------------------
-
-
 def test_add_and_delete_education(client):
     """
     Given a seeker adds an education entry
@@ -511,11 +441,6 @@ def test_add_and_delete_education(client):
     r2 = client.delete(f"/api/seekers/63/education/{edu_id}")
     assert r2.status_code == 200
     assert r2.json()["education"] == []
-
-
-# ---------------------------------------------------------------------------
-# Security: file upload validation (magic bytes, not spoofable headers)
-# ---------------------------------------------------------------------------
 
 
 def test_upload_rejects_spoofed_content_type(client):
@@ -570,11 +495,6 @@ def test_upload_path_traversal_filename_is_neutralized(client):
     filename = r.json()["resume_filename"]
     assert ".." not in filename
     assert "/" not in filename
-
-
-# ---------------------------------------------------------------------------
-# Security: input validation (length limits, email format)
-# ---------------------------------------------------------------------------
 
 
 def test_profile_info_rejects_invalid_email(client):
@@ -643,11 +563,6 @@ def test_experience_description_length_is_capped(client):
     assert r.status_code == 422
 
 
-# ---------------------------------------------------------------------------
-# Resume parsing (NLP-lite auto-fill suggestions)
-# ---------------------------------------------------------------------------
-
-
 def test_parse_resume_not_found_when_none_uploaded(client):
     """
     Given a seeker who has never uploaded a resume
@@ -656,11 +571,6 @@ def test_parse_resume_not_found_when_none_uploaded(client):
     """
     r = client.get("/api/seekers/999/resume/parse")
     assert r.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# Resume parsing: work experience and education extraction
-# ---------------------------------------------------------------------------
 
 
 def _make_pdf_bytes(lines: list[str]) -> bytes:

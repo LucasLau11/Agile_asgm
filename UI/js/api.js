@@ -1,9 +1,5 @@
 /**
  * Shared frontend helpers — calls the real FastAPI backend.
- *
- * Sprint 1 has no login yet, so we simulate "who's logged in" with a
- * simple dropdown. The chosen seeker ID is kept in localStorage so it
- * persists across pages. Swap this out for real auth in Sprint 3.
  */
 
 const API_BASE = ""; // same-origin: FastAPI serves both the API and /UI/*

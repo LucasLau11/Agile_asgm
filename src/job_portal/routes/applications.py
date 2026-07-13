@@ -43,9 +43,7 @@ def _humanize(dt: Optional[datetime]) -> str:
     return f"{days} days ago"
 
 
-# ---------------------------------------------------------------------------
-# Seeker: apply for a job  (this page uses Jinja/server rendering already — untouched)
-# ---------------------------------------------------------------------------
+# Seeker: apply for a job  
 
 
 @router.get("/apply", response_class=HTMLResponse)
@@ -54,9 +52,6 @@ async def get_apply_page(request: Request, job_id: int, db: Session = Depends(ge
     if not job:
         raise HTTPException(status_code=404, detail="The targeted vacancy posting does not exist.")
 
-    # `Job` has no credibility_score column — it's computed on the fly here
-    # (not persisted) so the template's {{ job.credibility_score }} reflects
-    # the real per-job/employer signal instead of always falling back to "N/A".
     job.credibility_score = compute_credibility_score(job, db)
 
     return templates.TemplateResponse(
@@ -115,13 +110,6 @@ async def get_applications_fragment(request: Request, db: Session = Depends(get_
             "status": app.status
         })
     return templates.TemplateResponse(request=request, name="my_application_fragment.html", context={"applications": formatted_apps})
-
-
-# ---------------------------------------------------------------------------
-# JSON APIs — everything below is consumed by plain HTML + JS pages
-# (my_application.html, employer_applications.html, applicant_detail.html,
-# notifications.html), the same pattern browse_job.html uses.
-# ---------------------------------------------------------------------------
 
 
 @router.get("/api/applications")

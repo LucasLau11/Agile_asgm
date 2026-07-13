@@ -9,17 +9,15 @@ from fastapi.staticfiles import StaticFiles
 
 from job_portal.database import Base, engine
 from job_portal.routes.seeker import router as seeker_router
-from job_portal.routes.applications import router as applications_router  # Added your Import
+from job_portal.routes.applications import router as applications_router  
 
 app = FastAPI(title="Job Portal Architecture", version="0.1.0")
 
-# Auto-instantiates structural tables in local file on boot-up
 Base.metadata.create_all(bind=engine)
 
 app.include_router(seeker_router)
-app.include_router(applications_router)  # Registered your Application Router!
+app.include_router(applications_router)  
 
-# Mount asset locations relative to root
 app.mount("/UI", StaticFiles(directory="UI"), name="UI")
 
 os.makedirs("uploads/resumes", exist_ok=True)
