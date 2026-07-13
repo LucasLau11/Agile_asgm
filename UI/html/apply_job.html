@@ -14,9 +14,9 @@
   <div class="brand">Job Portal</div>
 
   <nav>
-    <a href="browse_job.html">Browse Jobs</a>
-    <a href="my_application.html">My Applications</a>
-    <a href="notifications.html">Notifications</a>
+    <a href="/UI/html/browse_job.html">Browse Jobs</a>
+    <a href="/UI/html/my_application.html">My Applications</a>
+    <a href="/UI/html/notifications.html">Notifications</a>
   </nav>
 </header>
 
@@ -40,11 +40,12 @@
           ABC Technologies · {{ job.location or "Remote" }} · {{ job.state or "" }}
         </div>
         
-        <div style="margin-top: 10px;">
-          {% for skill in job.skills_required %}
-            <span class="skill-tag">{{ skill }}</span>
-          {% endfor %}
-        </div>
+<div style="margin-top: 10px;">
+  <!-- Split the comma-separated string into a real array list -->
+  {% for skill in job.skills_required.split(',') %}
+    <span class="skill-tag">{{ skill.strip() }}</span>
+  {% endfor %}
+</div>
       </div>
 
       <div class="trust-seal">

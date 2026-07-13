@@ -33,6 +33,7 @@ from job_portal.schemas import (
     SeekerProfileOut,
     SkillsUpdate,
 )
+from job_portal.routes.credibility import compute_credibility_score
 
 router = APIRouter(tags=["seeker"])
 
@@ -112,7 +113,10 @@ def list_jobs(
         query = query.filter((Job.salary_min.is_(None)) | (Job.salary_min <= salary_max))
 
     jobs = query.order_by(Job.created_at.desc()).all()
-    return [JobOut.from_job(job, credibility_score=_placeholder_score(job)) for job in jobs]
+    return [
+        JobOut.from_job(job, credibility_score=compute_credibility_score(job, db))
+        for job in jobs
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +182,11 @@ def recommended_jobs(
 
     scored.sort(key=lambda pair: pair[0], reverse=True)
     return [
-        JobOut.from_job(job, credibility_score=_placeholder_score(job), match_percentage=pct)
+        JobOut.from_job(
+            job,
+            credibility_score=compute_credibility_score(job, db),
+            match_percentage=pct,
+        )
         for pct, job in scored[:limit]
     ]
 
@@ -189,28 +197,7 @@ def get_job(job_id: int, db: Session = Depends(get_db)) -> JobOut:
     job = db.query(Job).filter(Job.id == job_id).first()
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    return JobOut.from_job(job, credibility_score=_placeholder_score(job))
-
-
-def _placeholder_score(job: Job) -> int:
-    """
-    Temporary stand-in for Teammate C's credibility score (US-11).
-
-    Once C's `services/credibility.py` lands, replace this with:
-        from job_portal.services.credibility import compute_credibility_score
-        return compute_credibility_score(job)
-
-    Kept here so Teammate B's endpoints return a complete, testable
-    response shape without blocking on C's branch merging first.
-    """
-    score = 20
-    if job.description and len(job.description) > 50:
-        score += 20
-    if job.location:
-        score += 20
-    if job.skills_list():
-        score += 20
-    return min(score, 100)
+    return JobOut.from_job(job, credibility_score=compute_credibility_score(job, db))
 
 
 # ---------------------------------------------------------------------------
