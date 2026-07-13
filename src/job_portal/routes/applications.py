@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from job_portal.database import get_db
 from job_portal.models import Application, Job, SeekerProfile, Notification
+from services.credibility import compute_credibility_score
 
 router = APIRouter(tags=["Applications Core Engine"])
 templates = Jinja2Templates(directory="UI/html")
@@ -52,6 +53,11 @@ async def get_apply_page(request: Request, job_id: int, db: Session = Depends(ge
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="The targeted vacancy posting does not exist.")
+
+    # `Job` has no credibility_score column — it's computed on the fly here
+    # (not persisted) so the template's {{ job.credibility_score }} reflects
+    # the real per-job/employer signal instead of always falling back to "N/A".
+    job.credibility_score = compute_credibility_score(job, db)
 
     return templates.TemplateResponse(
         request=request,
