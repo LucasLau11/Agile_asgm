@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from job_portal.database import get_db
 from job_portal.models import Application, Job, SeekerProfile, Notification
-from job_portal.routes.credibility import compute_credibility_score
+from services.credibility import compute_credibility_score
 
 router = APIRouter(tags=["Applications Core Engine"])
 templates = Jinja2Templates(directory="UI/html")
