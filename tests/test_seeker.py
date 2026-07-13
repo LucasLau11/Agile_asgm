@@ -511,3 +511,212 @@ def test_add_and_delete_education(client):
     r2 = client.delete(f"/api/seekers/63/education/{edu_id}")
     assert r2.status_code == 200
     assert r2.json()["education"] == []
+
+
+# ---------------------------------------------------------------------------
+# Security: file upload validation (magic bytes, not spoofable headers)
+# ---------------------------------------------------------------------------
+
+
+def test_upload_rejects_spoofed_content_type(client):
+    """
+    Security: a file with a fake Content-Type header but non-PDF actual
+    content must be rejected
+
+    Given a plain text file
+    When it's uploaded with Content-Type: application/pdf (a lie)
+    Then the upload is rejected, because we check the real file bytes,
+    not the browser-supplied header
+    """
+    fake = io.BytesIO(b"just plain text, not a real PDF at all")
+    r = client.post(
+        "/api/seekers/70/resume",
+        files={"file": ("resume.pdf", fake, "application/pdf")},
+    )
+    assert r.status_code == 400
+
+
+def test_upload_accepts_real_docx_content(client):
+    """
+    Given a file with genuine DOCX magic bytes (a zip file signature)
+    When uploaded with a .docx filename
+    Then it's accepted, because DOCX files are zip archives under the hood
+    """
+    # Minimal valid zip file signature — enough to pass the magic-byte check.
+    fake_docx = io.BytesIO(b"PK\x03\x04" + b"0" * 50)
+    r = client.post(
+        "/api/seekers/71/resume",
+        files={"file": ("resume.docx", fake_docx,
+                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+    assert r.status_code == 201
+
+
+def test_upload_path_traversal_filename_is_neutralized(client):
+    """
+    Security: a malicious filename must never affect where the file is saved
+
+    Given a filename containing path traversal characters
+    When a valid PDF is uploaded with that filename
+    Then the upload still succeeds (content is valid), and the DISPLAYED
+    filename has been stripped of any directory components
+    """
+    real_pdf = io.BytesIO(b"%PDF-1.4 fake but valid-looking pdf content")
+    r = client.post(
+        "/api/seekers/72/resume",
+        files={"file": ("resume.pdf/../../../../etc/passwd", real_pdf, "application/pdf")},
+    )
+    assert r.status_code == 201
+    filename = r.json()["resume_filename"]
+    assert ".." not in filename
+    assert "/" not in filename
+
+
+# ---------------------------------------------------------------------------
+# Security: input validation (length limits, email format)
+# ---------------------------------------------------------------------------
+
+
+def test_profile_info_rejects_invalid_email(client):
+    """
+    Given a seeker submits something that isn't a real email address
+    When I PUT /api/seekers/{id} with that value in the email field
+    Then the request is rejected with a validation error, not silently saved
+    """
+    r = client.put("/api/seekers/73", json={"email": "not an email at all"})
+    assert r.status_code == 422
+
+
+def test_profile_info_accepts_empty_email(client):
+    """
+    Given email is optional (no login system yet)
+    When I PUT /api/seekers/{id} with an empty email string
+    Then it's accepted (empty is valid; only non-empty-but-malformed is rejected)
+    """
+    r = client.put("/api/seekers/74", json={"email": ""})
+    assert r.status_code == 200
+
+
+def test_experience_description_length_is_capped(client):
+    """
+    Given someone submits a work experience description longer than the cap
+    When I POST /api/seekers/{id}/experience
+    Then the request is rejected rather than silently truncated or stored in full
+    """
+    r = client.post(
+        "/api/seekers/75/experience",
+        json={
+            "job_title": "Dev",
+            "company_name": "Co",
+            "description": "x" * 5000,  # over the 2000-char cap
+        },
+    )
+    assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Resume parsing (NLP-lite auto-fill suggestions)
+# ---------------------------------------------------------------------------
+
+
+def test_parse_resume_not_found_when_none_uploaded(client):
+    """
+    Given a seeker who has never uploaded a resume
+    When I GET /api/seekers/{id}/resume/parse
+    Then I get 404, not a crash or empty-but-200 response
+    """
+    r = client.get("/api/seekers/999/resume/parse")
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Resume parsing: work experience and education extraction
+# ---------------------------------------------------------------------------
+
+
+def _make_pdf_bytes(lines: list[str]) -> bytes:
+    """Helper: build a minimal real PDF (via reportlab) from lines of text,
+    so parsing tests exercise the actual PDF text-extraction path."""
+    import io as _io
+    from reportlab.pdfgen import canvas as _canvas
+
+    buf = _io.BytesIO()
+    c = _canvas.Canvas(buf)
+    y = 800
+    for line in lines:
+        c.drawString(50, y, line)
+        y -= 20
+    c.save()
+    return buf.getvalue()
+
+
+def test_parse_extracts_multiple_experience_entries(client):
+    """
+    Given a resume with two work experience entries, each with a job title,
+    company, date range on its own line, and a description
+    When I scan the resume
+    Then both entries are extracted with correct titles, companies, and dates
+    """
+    pdf_bytes = _make_pdf_bytes([
+        "Test Person", "test@example.com",
+        "EXPERIENCE",
+        "Junior Developer, TechCo",
+        "Jan 2023 - Present",
+        "Built internal tools.",
+        "Software Engineering Intern, StartupX",
+        "Jun 2022 - Dec 2022",
+        "Assisted with testing.",
+        "EDUCATION",
+        "Test University",
+        "Bachelor of Science in Computer Science",
+        "2019 - 2023",
+    ])
+    client.post("/api/seekers/80/resume", files={"file": ("resume.pdf", io.BytesIO(pdf_bytes), "application/pdf")})
+
+    r = client.get("/api/seekers/80/resume/parse")
+    assert r.status_code == 200
+    body = r.json()
+
+    assert len(body["experience"]) == 2
+    assert body["experience"][0]["job_title"] == "Junior Developer"
+    assert body["experience"][0]["company_name"] == "TechCo"
+    assert body["experience"][0]["start_date"] == "Jan 2023"
+    assert body["experience"][0]["end_date"] == ""  # "Present" normalizes to blank
+    assert body["experience"][1]["company_name"] == "StartupX"
+
+
+def test_parse_extracts_education_entry(client):
+    """
+    Given a resume with an education section
+    When I scan the resume
+    Then institution, degree, field of study, and dates are extracted
+    """
+    pdf_bytes = _make_pdf_bytes([
+        "Test Person", "test@example.com",
+        "EDUCATION",
+        "Test University",
+        "Bachelor of Science in Computer Science",
+        "2019 - 2023",
+    ])
+    client.post("/api/seekers/81/resume", files={"file": ("resume.pdf", io.BytesIO(pdf_bytes), "application/pdf")})
+
+    r = client.get("/api/seekers/81/resume/parse")
+    body = r.json()
+    assert len(body["education"]) == 1
+    assert body["education"][0]["institution"] == "Test University"
+    assert body["education"][0]["degree"] == "Bachelor"
+    assert body["education"][0]["field_of_study"] == "Computer Science"
+
+
+def test_parse_resume_with_no_experience_section_returns_empty_list(client):
+    """
+    Given a resume with no EXPERIENCE section at all
+    When I scan the resume
+    Then experience is an empty list, not an error
+    """
+    pdf_bytes = _make_pdf_bytes(["Test Person", "test@example.com", "SKILLS", "Python, SQL"])
+    client.post("/api/seekers/82/resume", files={"file": ("resume.pdf", io.BytesIO(pdf_bytes), "application/pdf")})
+
+    r = client.get("/api/seekers/82/resume/parse")
+    assert r.status_code == 200
+    assert r.json()["experience"] == []

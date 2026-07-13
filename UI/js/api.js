@@ -151,6 +151,10 @@ async function uploadResume(seekerId, file) {
   return res.json();
 }
 
+function scanResume(seekerId) {
+  return apiFetch(`/api/seekers/${seekerId}/resume/parse`);
+}
+
 function trustSealHtml(score) {
   const safeScore = score == null ? "—" : score;
   const lowClass = score != null && score < 50 ? "low" : "";

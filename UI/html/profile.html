@@ -151,6 +151,7 @@
       <input type="file" id="resumeInput" accept=".pdf,.doc,.docx" style="display:none" />
       <p class="status-msg" id="resumeStatus"></p>
       <div id="resumeCurrent"></div>
+      <div id="scanResumeContainer"></div>
     </section>
   <div id="applicationsTrackerContainer"></div>
   </main>
@@ -438,6 +439,167 @@
       cardEl.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") cardEl.click();
       });
+
+      renderScanButton();
+    }
+
+    // ---------- Resume scanning (NLP-lite auto-fill suggestions) ----------
+
+    function renderScanButton() {
+      const container = document.getElementById("scanResumeContainer");
+      container.innerHTML = `
+        <button type="button" class="btn btn-secondary" id="scanResumeBtn" style="margin-top:12px;">
+          Scan resume for profile suggestions
+        </button>
+        <div id="scanResultsPanel"></div>
+      `;
+      document.getElementById("scanResumeBtn").addEventListener("click", runResumeScan);
+    }
+
+    async function runResumeScan() {
+      const panel = document.getElementById("scanResultsPanel");
+      panel.innerHTML = `<p class="status-msg" style="margin-top:10px;">Scanning your resume…</p>`;
+      try {
+        const suggestions = await scanResume(seekerId);
+
+        if (!suggestions.text_extracted) {
+          panel.innerHTML = `
+            <p class="status-msg error" style="margin-top:10px;">
+              Couldn't read any text from this file — it might be a scanned image
+              rather than a real text document, or an older .doc file (limited support).
+              Try a text-based PDF or .docx instead.
+            </p>`;
+          return;
+        }
+
+        const hasAnything = suggestions.full_name || suggestions.email || suggestions.phone
+          || suggestions.skills.length > 0 || suggestions.experience.length > 0 || suggestions.education.length > 0;
+        if (!hasAnything) {
+          panel.innerHTML = `<p class="status-msg" style="margin-top:10px;">No recognizable info found in this resume.</p>`;
+          return;
+        }
+
+        // New skills found in the resume that aren't already saved on the profile.
+        const newSkills = suggestions.skills.filter((s) => !profileData.skills.includes(s));
+
+        const experienceRows = suggestions.experience
+          .map((exp, i) => `
+            <label class="scan-result-row">
+              <input type="checkbox" data-field="experience" data-index="${i}" checked />
+              <span>${escapeHtml(exp.job_title || "(title not detected)")}${exp.company_name ? `, ${escapeHtml(exp.company_name)}` : ""}
+                ${exp.start_date ? ` — ${escapeHtml(exp.start_date)} to ${escapeHtml(exp.end_date || "Present")}` : ""}</span>
+            </label>`)
+          .join("");
+
+        const educationRows = suggestions.education
+          .map((edu, i) => `
+            <label class="scan-result-row">
+              <input type="checkbox" data-field="education" data-index="${i}" checked />
+              <span>${escapeHtml(edu.institution || "(institution not detected)")}${edu.degree ? ` — ${escapeHtml(edu.degree)}` : ""}
+                ${edu.field_of_study ? ` in ${escapeHtml(edu.field_of_study)}` : ""}</span>
+            </label>`)
+          .join("");
+
+        panel.innerHTML = `
+          <div class="scan-results-card">
+            <div class="scan-results-title">We found this in your resume — review before applying:</div>
+            ${suggestions.full_name ? `
+              <label class="scan-result-row">
+                <input type="checkbox" data-field="full_name" checked />
+                <span>Name: <strong>${escapeHtml(suggestions.full_name)}</strong></span>
+              </label>` : ""}
+            ${suggestions.email ? `
+              <label class="scan-result-row">
+                <input type="checkbox" data-field="email" checked />
+                <span>Email: <strong>${escapeHtml(suggestions.email)}</strong></span>
+              </label>` : ""}
+            ${suggestions.phone ? `
+              <label class="scan-result-row">
+                <input type="checkbox" data-field="phone" checked />
+                <span>Phone: <strong>${escapeHtml(suggestions.phone)}</strong></span>
+              </label>` : ""}
+            ${newSkills.length > 0 ? `
+              <label class="scan-result-row">
+                <input type="checkbox" data-field="skills" checked />
+                <span>Skills: <strong>${newSkills.map(escapeHtml).join(", ")}</strong></span>
+              </label>` : ""}
+            ${suggestions.experience.length > 0 ? `
+              <div class="scan-subsection-title">Work experience</div>
+              ${experienceRows}` : ""}
+            ${suggestions.education.length > 0 ? `
+              <div class="scan-subsection-title">Education</div>
+              ${educationRows}` : ""}
+            <button type="button" class="btn btn-primary" id="applyScanBtn" style="margin-top:10px;">
+              Apply selected to profile
+            </button>
+            <p class="status-msg" id="applyScanStatus"></p>
+          </div>
+        `;
+
+        document.getElementById("applyScanBtn").addEventListener("click", async () => {
+          const statusEl = document.getElementById("applyScanStatus");
+          const checked = (field) => panel.querySelector(`input[data-field="${field}"]`)?.checked;
+
+          try {
+            // Personal info fields (name/email/phone) go through one PUT,
+            // merged with whatever's already on the profile so we don't
+            // wipe out fields the user already filled in themselves.
+            if (checked("full_name") || checked("email") || checked("phone")) {
+              profileData = await updateProfileInfo(seekerId, {
+                full_name: checked("full_name") ? suggestions.full_name : profileData.full_name,
+                email: checked("email") ? suggestions.email : profileData.email,
+                phone: checked("phone") ? suggestions.phone : profileData.phone,
+                bio: profileData.bio,
+              });
+              renderInfoDisplay();
+            }
+
+            if (checked("skills") && newSkills.length > 0) {
+              profileData = await updateSeekerSkills(seekerId, [...profileData.skills, ...newSkills]);
+              renderSkills();
+            }
+
+            // Each checked experience/education row gets added as its own
+            // entry via the normal add endpoints (same as the manual "+ Add"
+            // forms use) — this reuses the exact same validated code path.
+            const checkedExperienceIndexes = [...panel.querySelectorAll('input[data-field="experience"]:checked')]
+              .map((el) => Number(el.dataset.index));
+            for (const i of checkedExperienceIndexes) {
+              const exp = suggestions.experience[i];
+              profileData = await addExperience(seekerId, {
+                job_title: exp.job_title || "Untitled role",
+                company_name: exp.company_name || "Unknown company",
+                start_date: exp.start_date,
+                end_date: exp.end_date,
+                description: exp.description,
+              });
+            }
+            if (checkedExperienceIndexes.length > 0) renderExperience();
+
+            const checkedEducationIndexes = [...panel.querySelectorAll('input[data-field="education"]:checked')]
+              .map((el) => Number(el.dataset.index));
+            for (const i of checkedEducationIndexes) {
+              const edu = suggestions.education[i];
+              profileData = await addEducation(seekerId, {
+                institution: edu.institution || "Unknown institution",
+                degree: edu.degree,
+                field_of_study: edu.field_of_study,
+                start_date: edu.start_date,
+                end_date: edu.end_date,
+              });
+            }
+            if (checkedEducationIndexes.length > 0) renderEducation();
+
+            statusEl.textContent = "Applied to your profile.";
+            statusEl.className = "status-msg success";
+          } catch (err) {
+            statusEl.textContent = `Couldn't apply suggestions: ${err.message}`;
+            statusEl.className = "status-msg error";
+          }
+        });
+      } catch (err) {
+        panel.innerHTML = `<p class="status-msg error" style="margin-top:10px;">Scan failed: ${escapeHtml(err.message)}</p>`;
+      }
     }
 
     function openPreview(url, filename) {

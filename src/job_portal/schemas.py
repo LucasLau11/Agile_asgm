@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ---------- Job (read-only from Teammate B's side) ----------
@@ -76,11 +76,11 @@ class ExperienceOut(BaseModel):
 
 
 class ExperienceIn(BaseModel):
-    job_title: str
-    company_name: str
-    start_date: Optional[str] = ""
-    end_date: Optional[str] = ""
-    description: Optional[str] = ""
+    job_title: str = Field(..., min_length=1, max_length=150)
+    company_name: str = Field(..., min_length=1, max_length=150)
+    start_date: Optional[str] = Field("", max_length=30)
+    end_date: Optional[str] = Field("", max_length=30)
+    description: Optional[str] = Field("", max_length=2000)
 
 
 # ---------- Education ----------
@@ -98,11 +98,11 @@ class EducationOut(BaseModel):
 
 
 class EducationIn(BaseModel):
-    institution: str
-    degree: Optional[str] = ""
-    field_of_study: Optional[str] = ""
-    start_date: Optional[str] = ""
-    end_date: Optional[str] = ""
+    institution: str = Field(..., min_length=1, max_length=150)
+    degree: Optional[str] = Field("", max_length=150)
+    field_of_study: Optional[str] = Field("", max_length=150)
+    start_date: Optional[str] = Field("", max_length=30)
+    end_date: Optional[str] = Field("", max_length=30)
 
 
 # ---------- Seeker profile ----------
@@ -146,13 +146,83 @@ class SeekerProfileOut(BaseModel):
 class SkillsUpdate(BaseModel):
     """Body for PUT /api/seekers/{seeker_id}/skills"""
 
-    skills: List[str]
+    skills: List[str] = Field(..., max_length=50)  # cap the number of skills, not just their length
+
+    @field_validator("skills")
+    @classmethod
+    def _cap_skill_length(cls, skills: List[str]) -> List[str]:
+        return [s[:50] for s in skills]  # cap each individual skill's length
 
 
 class ProfileInfoUpdate(BaseModel):
     """Body for PUT /api/seekers/{seeker_id} (personal info fields)."""
 
-    full_name: Optional[str] = ""
-    email: Optional[str] = ""
-    phone: Optional[str] = ""
-    bio: Optional[str] = ""
+    full_name: Optional[str] = Field("", max_length=150)
+    email: Optional[str] = Field("", max_length=150)
+    phone: Optional[str] = Field("", max_length=30)
+    bio: Optional[str] = Field("", max_length=2000)
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email_format(cls, value: Optional[str]) -> Optional[str]:
+        # Email is optional (no login/registration yet in Sprint 1), so an
+        # empty string must stay valid — but if something IS provided, it
+        # must actually look like an email, not just any string.
+        if not value:
+            return value
+        from email_validator import EmailNotValidError, validate_email
+
+        try:
+            validate_email(value, check_deliverability=False)
+        except EmailNotValidError:
+            raise ValueError("Must be a valid email address, e.g. name@example.com")
+        return value
+
+
+# ---------- Resume parsing (NLP-lite auto-fill suggestions) ----------
+
+
+class ExperienceSuggestion(BaseModel):
+    """
+    A resume-parsed work experience suggestion. Deliberately more lenient
+    than ExperienceIn (which is used for actual create requests) — every
+    field is optional here, because the parser sometimes can't confidently
+    split a line into title vs. company, and a suggestion with a blank
+    field the user can fill in themselves is far better than the whole
+    entry being dropped or the request erroring out.
+    """
+
+    job_title: str = ""
+    company_name: str = ""
+    start_date: str = ""
+    end_date: str = ""
+    description: str = ""
+
+
+class EducationSuggestion(BaseModel):
+    """Lenient counterpart to EducationIn — see ExperienceSuggestion docstring."""
+
+    institution: str = ""
+    degree: str = ""
+    field_of_study: str = ""
+    start_date: str = ""
+    end_date: str = ""
+
+
+class ParsedResumeOut(BaseModel):
+    """
+    Response for GET /api/seekers/{seeker_id}/resume/parse.
+
+    These are SUGGESTIONS extracted from the resume text — never applied
+    to the profile automatically. The frontend shows them for the user to
+    review and choose to apply via the normal profile/skills/experience/
+    education endpoints.
+    """
+
+    full_name: str = ""
+    email: str = ""
+    phone: str = ""
+    skills: List[str] = []
+    experience: List[ExperienceSuggestion] = []
+    education: List[EducationSuggestion] = []
+    text_extracted: bool = True
