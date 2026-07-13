@@ -374,7 +374,7 @@ h1 {
   margin-bottom: 5px;
 }
 
-.form-field input, .form-field textarea {
+.form-field input, .form-field textarea, .form-field select {
   width: 100%;
   padding: 9px 12px;
   border: 1px solid var(--line);
@@ -383,6 +383,30 @@ h1 {
   font-size: 0.9rem;
   background: var(--paper);
   resize: vertical;
+}
+
+.date-select-row {
+  display: flex;
+  gap: 8px;
+}
+.date-select-row select {
+  flex: 1;
+}
+
+.field-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.field-error {
+  color: var(--danger);
+  font-size: 0.78rem;
+  margin-top: 4px;
+  min-height: 1em;
 }
 
 .entry-form {

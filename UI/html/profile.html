@@ -27,21 +27,24 @@
         <button type="button" class="btn-link" id="editInfoBtn">Edit</button>
       </div>
       <div id="infoDisplay"></div>
-      <form id="infoForm" style="display:none;">
+      <form id="infoForm" style="display:none;" novalidate>
         <div class="form-row">
           <div class="form-field">
-            <label for="fullNameInput">Full name</label>
-            <input type="text" id="fullNameInput" placeholder="e.g. Aisha Rahman" />
+            <label for="fullNameInput">Full name *</label>
+            <input type="text" id="fullNameInput" placeholder="e.g. Aisha Rahman" required />
+            <div class="field-error" id="fullNameError"></div>
           </div>
           <div class="form-field">
-            <label for="emailInput">Email</label>
-            <input type="email" id="emailInput" placeholder="e.g. aisha@example.com" />
+            <label for="emailInput">Email *</label>
+            <input type="email" id="emailInput" placeholder="e.g. aisha@example.com" required />
+            <div class="field-error" id="emailError"></div>
           </div>
         </div>
         <div class="form-row">
           <div class="form-field">
-            <label for="phoneInput">Phone</label>
-            <input type="text" id="phoneInput" placeholder="e.g. 012-345 6789" />
+            <label for="phoneInput">Phone *</label>
+            <input type="text" id="phoneInput" placeholder="e.g. 012-345 6789" required />
+            <div class="field-error" id="phoneError"></div>
           </div>
         </div>
         <div class="form-field" style="margin-bottom:12px;">
@@ -73,7 +76,7 @@
         <button type="button" class="btn-link" id="addExperienceBtn">+ Add</button>
       </div>
       <div id="experienceList"></div>
-      <form id="experienceForm" class="entry-form" style="display:none;">
+      <form id="experienceForm" class="entry-form" style="display:none;" novalidate>
         <div class="form-row">
           <div class="form-field">
             <label for="expTitleInput">Job title</label>
@@ -86,14 +89,25 @@
         </div>
         <div class="form-row">
           <div class="form-field">
-            <label for="expStartInput">Start date</label>
-            <input type="text" id="expStartInput" placeholder="e.g. Jan 2023" />
+            <label>Start date</label>
+            <div class="date-select-row">
+              <select id="expStartMonth"></select>
+              <select id="expStartYear"></select>
+            </div>
           </div>
           <div class="form-field">
-            <label for="expEndInput">End date</label>
-            <input type="text" id="expEndInput" placeholder="Leave blank for 'Present'" />
+            <label>End date</label>
+            <div class="date-select-row">
+              <select id="expEndMonth"></select>
+              <select id="expEndYear"></select>
+            </div>
+            <label class="field-checkbox-row">
+              <input type="checkbox" id="expCurrentCheckbox" />
+              I currently work here
+            </label>
           </div>
         </div>
+        <div class="field-error" id="expDateError"></div>
         <div class="form-field" style="margin-bottom:12px;">
           <label for="expDescInput">Description</label>
           <textarea id="expDescInput" rows="2"></textarea>
@@ -110,31 +124,35 @@
         <button type="button" class="btn-link" id="addEducationBtn">+ Add</button>
       </div>
       <div id="educationList"></div>
-      <form id="educationForm" class="entry-form" style="display:none;">
+      <form id="educationForm" class="entry-form" style="display:none;" novalidate>
         <div class="form-row">
           <div class="form-field">
             <label for="eduInstitutionInput">Institution</label>
             <input type="text" id="eduInstitutionInput" required />
           </div>
           <div class="form-field">
-            <label for="eduDegreeInput">Degree</label>
-            <input type="text" id="eduDegreeInput" placeholder="e.g. BSc" />
+            <label for="eduDegreeInput">Education level</label>
+            <select id="eduDegreeInput"></select>
           </div>
         </div>
         <div class="form-row">
           <div class="form-field">
             <label for="eduFieldInput">Field of study</label>
-            <input type="text" id="eduFieldInput" placeholder="e.g. Computer Science" />
+            <select id="eduFieldInput"></select>
           </div>
         </div>
         <div class="form-row">
           <div class="form-field">
-            <label for="eduStartInput">Start year</label>
-            <input type="text" id="eduStartInput" placeholder="e.g. 2019" />
+            <label>Start year</label>
+            <select id="eduStartYear"></select>
           </div>
           <div class="form-field">
-            <label for="eduEndInput">End year</label>
-            <input type="text" id="eduEndInput" placeholder="e.g. 2023" />
+            <label>End year</label>
+            <select id="eduEndYear"></select>
+            <label class="field-checkbox-row">
+              <input type="checkbox" id="eduCurrentCheckbox" />
+              I'm currently studying here
+            </label>
           </div>
         </div>
         <button type="submit" class="btn btn-primary">Add education</button>
@@ -199,6 +217,9 @@
       document.getElementById("emailInput").value = profileData.email || "";
       document.getElementById("phoneInput").value = profileData.phone || "";
       document.getElementById("bioInput").value = profileData.bio || "";
+      document.getElementById("fullNameError").textContent = "";
+      document.getElementById("emailError").textContent = "";
+      document.getElementById("phoneError").textContent = "";
       document.getElementById("infoDisplay").style.display = "none";
       document.getElementById("infoForm").style.display = "block";
       document.getElementById("editInfoBtn").style.display = "none";
@@ -210,9 +231,66 @@
       document.getElementById("editInfoBtn").style.display = "inline";
     });
 
+    // Mirrors the backend validators in schemas.py — gives instant feedback
+    // instead of waiting on a round trip, but the backend is still the
+    // final authority (never trust client-side validation alone).
+    const NAME_PATTERN = /^[A-Za-z][A-Za-z.'\-\s]*$/;
+    const PHONE_PATTERN = /^\+?[0-9][0-9\-\s()]*$/;
+
+    function validateInfoForm() {
+      let valid = true;
+      const nameEl = document.getElementById("fullNameInput");
+      const emailEl = document.getElementById("emailInput");
+      const phoneEl = document.getElementById("phoneInput");
+      const nameError = document.getElementById("fullNameError");
+      const emailError = document.getElementById("emailError");
+      const phoneError = document.getElementById("phoneError");
+      nameError.textContent = "";
+      emailError.textContent = "";
+      phoneError.textContent = "";
+
+      const name = nameEl.value.trim();
+      if (!name) {
+        nameError.textContent = "Name is required.";
+        valid = false;
+      } else if (/\d/.test(name)) {
+        nameError.textContent = "Name cannot contain numbers.";
+        valid = false;
+      } else if (!NAME_PATTERN.test(name)) {
+        nameError.textContent = "Name can only contain letters, spaces, apostrophes, and hyphens.";
+        valid = false;
+      }
+
+      const email = emailEl.value.trim();
+      if (!email) {
+        emailError.textContent = "Email is required.";
+        valid = false;
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        emailError.textContent = "Enter a valid email address.";
+        valid = false;
+      }
+
+      const phone = phoneEl.value.trim();
+      const phoneDigitCount = (phone.match(/\d/g) || []).length;
+      if (!phone) {
+        phoneError.textContent = "Phone number is required.";
+        valid = false;
+      } else if (!PHONE_PATTERN.test(phone)) {
+        phoneError.textContent = "Phone number can only contain digits, spaces, dashes, and parentheses.";
+        valid = false;
+      } else if (phoneDigitCount < 7) {
+        phoneError.textContent = "Phone number must have at least 7 digits.";
+        valid = false;
+      }
+
+      return valid;
+    }
+
     document.getElementById("infoForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const statusEl = document.getElementById("infoStatus");
+      statusEl.textContent = "";
+      if (!validateInfoForm()) return;
       try {
         profileData = await updateProfileInfo(seekerId, {
           full_name: document.getElementById("fullNameInput").value.trim(),
@@ -314,7 +392,25 @@
       });
     }
 
+    function populateExperienceDateSelects() {
+      document.getElementById("expStartMonth").innerHTML = monthOptionsHtml();
+      document.getElementById("expStartYear").innerHTML = yearOptionsHtml();
+      document.getElementById("expEndMonth").innerHTML = monthOptionsHtml();
+      document.getElementById("expEndYear").innerHTML = yearOptionsHtml();
+    }
+
+    document.getElementById("expCurrentCheckbox").addEventListener("change", (e) => {
+      const disabled = e.target.checked;
+      document.getElementById("expEndMonth").disabled = disabled;
+      document.getElementById("expEndYear").disabled = disabled;
+      if (disabled) {
+        document.getElementById("expEndMonth").value = "";
+        document.getElementById("expEndYear").value = "";
+      }
+    });
+
     document.getElementById("addExperienceBtn").addEventListener("click", () => {
+      populateExperienceDateSelects();
       document.getElementById("experienceForm").style.display = "block";
     });
     document.getElementById("cancelExperienceBtn").addEventListener("click", () => {
@@ -323,15 +419,37 @@
 
     document.getElementById("experienceForm").addEventListener("submit", async (e) => {
       e.preventDefault();
+      const errorEl = document.getElementById("expDateError");
+      errorEl.textContent = "";
+
+      const startMonth = document.getElementById("expStartMonth").value;
+      const startYear = document.getElementById("expStartYear").value;
+      const endMonth = document.getElementById("expEndMonth").value;
+      const endYear = document.getElementById("expEndYear").value;
+      const isCurrent = document.getElementById("expCurrentCheckbox").checked;
+
+      // A month picked without a year (or vice versa) is an incomplete date —
+      // catch it here instead of silently dropping half of it.
+      if ((startMonth && !startYear) || (!startMonth && startYear)) {
+        errorEl.textContent = "Please select both a month and a year for the start date.";
+        return;
+      }
+      if (!isCurrent && ((endMonth && !endYear) || (!endMonth && endYear))) {
+        errorEl.textContent = "Please select both a month and a year for the end date.";
+        return;
+      }
+
       profileData = await addExperience(seekerId, {
         job_title: document.getElementById("expTitleInput").value.trim(),
         company_name: document.getElementById("expCompanyInput").value.trim(),
-        start_date: document.getElementById("expStartInput").value.trim(),
-        end_date: document.getElementById("expEndInput").value.trim(),
+        start_date: combineDateSelects(startMonth, startYear),
+        end_date: isCurrent ? "" : combineDateSelects(endMonth, endYear),
         description: document.getElementById("expDescInput").value.trim(),
       });
       renderExperience();
       e.target.reset();
+      document.getElementById("expEndMonth").disabled = false;
+      document.getElementById("expEndYear").disabled = false;
       document.getElementById("experienceForm").style.display = "none";
     });
 
@@ -369,7 +487,23 @@
       });
     }
 
+    function populateEducationSelects() {
+      document.getElementById("eduDegreeInput").innerHTML =
+        dropdownOptionsHtml(EDUCATION_LEVELS, "", "Select education level…");
+      document.getElementById("eduFieldInput").innerHTML =
+        dropdownOptionsHtml(FIELDS_OF_STUDY, "", "Select field of study…");
+      document.getElementById("eduStartYear").innerHTML = yearOptionsHtml();
+      document.getElementById("eduEndYear").innerHTML = yearOptionsHtml();
+    }
+
+    document.getElementById("eduCurrentCheckbox").addEventListener("change", (e) => {
+      const disabled = e.target.checked;
+      document.getElementById("eduEndYear").disabled = disabled;
+      if (disabled) document.getElementById("eduEndYear").value = "";
+    });
+
     document.getElementById("addEducationBtn").addEventListener("click", () => {
+      populateEducationSelects();
       document.getElementById("educationForm").style.display = "block";
     });
     document.getElementById("cancelEducationBtn").addEventListener("click", () => {
@@ -378,15 +512,17 @@
 
     document.getElementById("educationForm").addEventListener("submit", async (e) => {
       e.preventDefault();
+      const isCurrent = document.getElementById("eduCurrentCheckbox").checked;
       profileData = await addEducation(seekerId, {
         institution: document.getElementById("eduInstitutionInput").value.trim(),
-        degree: document.getElementById("eduDegreeInput").value.trim(),
-        field_of_study: document.getElementById("eduFieldInput").value.trim(),
-        start_date: document.getElementById("eduStartInput").value.trim(),
-        end_date: document.getElementById("eduEndInput").value.trim(),
+        degree: document.getElementById("eduDegreeInput").value,
+        field_of_study: document.getElementById("eduFieldInput").value,
+        start_date: document.getElementById("eduStartYear").value,
+        end_date: isCurrent ? "" : document.getElementById("eduEndYear").value,
       });
       renderEducation();
       e.target.reset();
+      document.getElementById("eduEndYear").disabled = false;
       document.getElementById("educationForm").style.display = "none";
     });
 
@@ -472,7 +608,7 @@
           return;
         }
 
-        const hasAnything = suggestions.full_name || suggestions.email || suggestions.phone
+        const hasAnything = suggestions.full_name || suggestions.email || suggestions.phone || suggestions.bio
           || suggestions.skills.length > 0 || suggestions.experience.length > 0 || suggestions.education.length > 0;
         if (!hasAnything) {
           panel.innerHTML = `<p class="status-msg" style="margin-top:10px;">No recognizable info found in this resume.</p>`;
@@ -518,6 +654,11 @@
                 <input type="checkbox" data-field="phone" checked />
                 <span>Phone: <strong>${escapeHtml(suggestions.phone)}</strong></span>
               </label>` : ""}
+            ${suggestions.bio ? `
+              <label class="scan-result-row">
+                <input type="checkbox" data-field="bio" checked />
+                <span>Bio: <strong>${escapeHtml(suggestions.bio)}</strong></span>
+              </label>` : ""}
             ${newSkills.length > 0 ? `
               <label class="scan-result-row">
                 <input type="checkbox" data-field="skills" checked />
@@ -544,12 +685,30 @@
             // Personal info fields (name/email/phone) go through one PUT,
             // merged with whatever's already on the profile so we don't
             // wipe out fields the user already filled in themselves.
-            if (checked("full_name") || checked("email") || checked("phone")) {
+            if (checked("full_name") || checked("email") || checked("phone") || checked("bio")) {
+              const mergedName = checked("full_name") ? suggestions.full_name : profileData.full_name;
+              const mergedEmail = checked("email") ? suggestions.email : profileData.email;
+              const mergedPhone = checked("phone") ? suggestions.phone : profileData.phone;
+
+              // Name/email/phone are required together on the profile. If the
+              // resume didn't detect one of them AND it's not already saved,
+              // applying would fail — tell the user what's missing instead
+              // of letting the save attempt fail with a generic error.
+              const missing = [];
+              if (!mergedName) missing.push("full name");
+              if (!mergedEmail) missing.push("email");
+              if (!mergedPhone) missing.push("phone number");
+              if (missing.length > 0) {
+                statusEl.textContent = `Can't save yet — your profile is still missing a ${missing.join(" and ")}. Add it in "Personal info" above, then try applying again.`;
+                statusEl.className = "status-msg error";
+                return;
+              }
+
               profileData = await updateProfileInfo(seekerId, {
-                full_name: checked("full_name") ? suggestions.full_name : profileData.full_name,
-                email: checked("email") ? suggestions.email : profileData.email,
-                phone: checked("phone") ? suggestions.phone : profileData.phone,
-                bio: profileData.bio,
+                full_name: mergedName,
+                email: mergedEmail,
+                phone: mergedPhone,
+                bio: checked("bio") ? suggestions.bio : profileData.bio,
               });
               renderInfoDisplay();
             }

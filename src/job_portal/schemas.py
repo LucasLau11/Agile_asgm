@@ -1,9 +1,107 @@
 """Pydantic schemas (request/response shapes) for Teammate B's endpoints."""
 
+import re
 from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# ---------------------------------------------------------------------------
+# Shared validation patterns / option lists
+#
+# The frontend date fields are now <select> dropdowns (month + year) rather
+# than free-text inputs, so a valid value is always "MMM YYYY" (e.g. "Jan
+# 2023") or blank. We ALSO accept a bare 4-digit year ("2023") here — not
+# because the frontend produces that anymore, but because the resume-scan
+# "apply suggestions" flow feeds parsed dates through these same endpoints,
+# and the parser sometimes can only find a year, not a month.
+# ---------------------------------------------------------------------------
+
+_NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z.'\-\s]*$")
+# Malaysian + generic international phone characters: digits, spaces,
+# dashes, parentheses, and a leading +. No letters allowed.
+_PHONE_PATTERN = re.compile(r"^\+?[0-9][0-9\-\s()]*$")
+_MONTH_NAMES = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+]
+_DATE_PATTERN = re.compile(
+    rf"^(?:(?:{'|'.join(_MONTH_NAMES)})\s)?(19|20)\d{{2}}$"
+)
+
+# Options for the education-level dropdown (renamed from the old free-text
+# "Degree" field, since seekers may be diploma/degree/master/PhD holders etc).
+EDUCATION_LEVELS = [
+    "SPM / High School",
+    "STPM / A-Level / Foundation",
+    "Certificate",
+    "Diploma",
+    "Bachelor's Degree",
+    "Master's Degree",
+    "PhD / Doctorate",
+    "Professional Certification",
+]
+
+# Options for the field-of-study dropdown.
+FIELDS_OF_STUDY = [
+    "Computer Science",
+    "Information Technology",
+    "Software Engineering",
+    "Data Science",
+    "Business Administration",
+    "Accounting",
+    "Finance",
+    "Marketing",
+    "Economics",
+    "Mechanical Engineering",
+    "Electrical Engineering",
+    "Civil Engineering",
+    "Psychology",
+    "Communications",
+    "Law",
+    "Medicine",
+    "Nursing",
+    "Education",
+    "Hospitality & Tourism",
+    "Design",
+    "Architecture",
+    "Mathematics",
+    "Other",
+]
+
+
+def _validate_person_name(value: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        raise ValueError("Name is required.")
+    if any(ch.isdigit() for ch in value):
+        raise ValueError("Name cannot contain numbers.")
+    if not _NAME_PATTERN.match(value):
+        raise ValueError("Name can only contain letters, spaces, apostrophes, and hyphens.")
+    return value
+
+
+def _validate_phone_number(value: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        raise ValueError("Phone number is required.")
+    if not _PHONE_PATTERN.match(value):
+        raise ValueError("Phone number can only contain digits, spaces, dashes, and parentheses.")
+    digit_count = sum(ch.isdigit() for ch in value)
+    if digit_count < 7:
+        raise ValueError("Phone number must have at least 7 digits.")
+    return value
+
+
+def _validate_date_field(value: Optional[str]) -> str:
+    """Used for start_date/end_date. Blank is always allowed (blank end_date
+    means "Present"; blank start_date just means unspecified)."""
+    value = (value or "").strip()
+    if not value:
+        return value
+    if not _DATE_PATTERN.match(value):
+        raise ValueError("Date must be selected from the month/year picker (e.g. 'Jan 2023').")
+    return value
 
 
 # ---------- Job (read-only from Teammate B's side) ----------
@@ -82,6 +180,19 @@ class ExperienceIn(BaseModel):
     end_date: Optional[str] = Field("", max_length=30)
     description: Optional[str] = Field("", max_length=2000)
 
+    @field_validator("job_title", "company_name")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("This field cannot be blank.")
+        return value
+
+    @field_validator("start_date", "end_date")
+    @classmethod
+    def _valid_date(cls, value: Optional[str]) -> str:
+        return _validate_date_field(value)
+
 
 # ---------- Education ----------
 
@@ -99,10 +210,43 @@ class EducationOut(BaseModel):
 
 class EducationIn(BaseModel):
     institution: str = Field(..., min_length=1, max_length=150)
+    # NOTE: this field stores the seeker's education LEVEL (Diploma / Bachelor's /
+    # Master's / PhD / etc — the frontend labels it "Education Level" and presents
+    # it as a dropdown). Kept as `degree` at the schema/DB level to avoid a
+    # migration; only the label + allowed values changed.
     degree: Optional[str] = Field("", max_length=150)
     field_of_study: Optional[str] = Field("", max_length=150)
     start_date: Optional[str] = Field("", max_length=30)
     end_date: Optional[str] = Field("", max_length=30)
+
+    @field_validator("institution")
+    @classmethod
+    def _institution_not_blank(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("Institution cannot be blank.")
+        return value
+
+    @field_validator("degree")
+    @classmethod
+    def _valid_education_level(cls, value: Optional[str]) -> str:
+        value = (value or "").strip()
+        if value and value not in EDUCATION_LEVELS:
+            raise ValueError(f"Education level must be one of: {', '.join(EDUCATION_LEVELS)}")
+        return value
+
+    @field_validator("field_of_study")
+    @classmethod
+    def _valid_field_of_study(cls, value: Optional[str]) -> str:
+        value = (value or "").strip()
+        if value and value not in FIELDS_OF_STUDY:
+            raise ValueError(f"Field of study must be one of: {', '.join(FIELDS_OF_STUDY)}")
+        return value
+
+    @field_validator("start_date", "end_date")
+    @classmethod
+    def _valid_date(cls, value: Optional[str]) -> str:
+        return _validate_date_field(value)
 
 
 # ---------- Seeker profile ----------
@@ -157,19 +301,27 @@ class SkillsUpdate(BaseModel):
 class ProfileInfoUpdate(BaseModel):
     """Body for PUT /api/seekers/{seeker_id} (personal info fields)."""
 
-    full_name: Optional[str] = Field("", max_length=150)
-    email: Optional[str] = Field("", max_length=150)
-    phone: Optional[str] = Field("", max_length=30)
+    full_name: str = Field(..., max_length=150)
+    email: str = Field(..., max_length=150)
+    phone: str = Field(..., max_length=30)
     bio: Optional[str] = Field("", max_length=2000)
+
+    @field_validator("full_name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        return _validate_person_name(value)
+
+    @field_validator("phone")
+    @classmethod
+    def _validate_phone(cls, value: str) -> str:
+        return _validate_phone_number(value)
 
     @field_validator("email")
     @classmethod
-    def _validate_email_format(cls, value: Optional[str]) -> Optional[str]:
-        # Email is optional (no login/registration yet in Sprint 1), so an
-        # empty string must stay valid — but if something IS provided, it
-        # must actually look like an email, not just any string.
+    def _validate_email_format(cls, value: str) -> str:
+        value = (value or "").strip()
         if not value:
-            return value
+            raise ValueError("Email is required.")
         from email_validator import EmailNotValidError, validate_email
 
         try:
@@ -222,6 +374,7 @@ class ParsedResumeOut(BaseModel):
     full_name: str = ""
     email: str = ""
     phone: str = ""
+    bio: str = ""
     skills: List[str] = []
     experience: List[ExperienceSuggestion] = []
     education: List[EducationSuggestion] = []

@@ -502,7 +502,7 @@ def test_add_and_delete_education(client):
     """
     r = client.post(
         "/api/seekers/63/education",
-        json={"institution": "USM", "degree": "BSc", "field_of_study": "CS",
+        json={"institution": "USM", "degree": "Bachelor's Degree", "field_of_study": "Computer Science",
               "start_date": "2019", "end_date": "2023"},
     )
     assert r.status_code == 201
@@ -587,14 +587,43 @@ def test_profile_info_rejects_invalid_email(client):
     assert r.status_code == 422
 
 
-def test_profile_info_accepts_empty_email(client):
+def test_profile_info_rejects_empty_email(client):
     """
-    Given email is optional (no login system yet)
+    Given name/email/phone are all required on the profile form
     When I PUT /api/seekers/{id} with an empty email string
-    Then it's accepted (empty is valid; only non-empty-but-malformed is rejected)
+    Then it's rejected rather than silently saved
     """
-    r = client.put("/api/seekers/74", json={"email": ""})
-    assert r.status_code == 200
+    r = client.put(
+        "/api/seekers/74",
+        json={"full_name": "Jane Doe", "email": "", "phone": "012-3456789"},
+    )
+    assert r.status_code == 422
+
+
+def test_profile_info_rejects_name_with_digits(client):
+    """
+    Given a name field must not contain numbers
+    When I PUT /api/seekers/{id} with a digit in full_name
+    Then the request is rejected
+    """
+    r = client.put(
+        "/api/seekers/76",
+        json={"full_name": "Jane2 Doe", "email": "jane@test.com", "phone": "012-3456789"},
+    )
+    assert r.status_code == 422
+
+
+def test_profile_info_rejects_phone_with_letters(client):
+    """
+    Given a phone field must only contain digits/phone punctuation
+    When I PUT /api/seekers/{id} with letters in the phone field
+    Then the request is rejected
+    """
+    r = client.put(
+        "/api/seekers/77",
+        json={"full_name": "Jane Doe", "email": "jane@test.com", "phone": "012-EXAMPLE"},
+    )
+    assert r.status_code == 422
 
 
 def test_experience_description_length_is_capped(client):
@@ -704,7 +733,7 @@ def test_parse_extracts_education_entry(client):
     body = r.json()
     assert len(body["education"]) == 1
     assert body["education"][0]["institution"] == "Test University"
-    assert body["education"][0]["degree"] == "Bachelor"
+    assert body["education"][0]["degree"] == "Bachelor's Degree"
     assert body["education"][0]["field_of_study"] == "Computer Science"
 
 

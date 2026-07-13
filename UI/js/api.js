@@ -23,6 +23,77 @@ const MALAYSIA_STATES = [
 
 const JOB_TYPES = ["Full-time", "Part-time", "Contract", "Internship", "Remote"];
 
+// ---------------------------------------------------------------------------
+// Profile form dropdown option lists. These must stay in sync with the
+// canonical lists in src/job_portal/schemas.py (EDUCATION_LEVELS /
+// FIELDS_OF_STUDY / month abbreviations) — the backend is the source of
+// truth for what's actually accepted; these mirror it for the UI.
+// ---------------------------------------------------------------------------
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const EDUCATION_LEVELS = [
+  "SPM / High School",
+  "STPM / A-Level / Foundation",
+  "Certificate",
+  "Diploma",
+  "Bachelor's Degree",
+  "Master's Degree",
+  "PhD / Doctorate",
+  "Professional Certification",
+];
+
+const FIELDS_OF_STUDY = [
+  "Computer Science", "Information Technology", "Software Engineering",
+  "Data Science", "Business Administration", "Accounting", "Finance",
+  "Marketing", "Economics", "Mechanical Engineering", "Electrical Engineering",
+  "Civil Engineering", "Psychology", "Communications", "Law", "Medicine",
+  "Nursing", "Education", "Hospitality & Tourism", "Design", "Architecture",
+  "Mathematics", "Other",
+];
+
+/** Build <option> markup for a month dropdown, with a blank leading placeholder. */
+function monthOptionsHtml(selected = "") {
+  const opts = MONTH_NAMES.map(
+    (m) => `<option value="${m}" ${m === selected ? "selected" : ""}>${m}</option>`
+  ).join("");
+  return `<option value="">Month</option>${opts}`;
+}
+
+/** Build <option> markup for a year dropdown (descending, most recent first). */
+function yearOptionsHtml(selected = "", fromYear = 1970, toYear = new Date().getFullYear() + 1) {
+  let opts = "";
+  for (let y = toYear; y >= fromYear; y--) {
+    opts += `<option value="${y}" ${String(y) === String(selected) ? "selected" : ""}>${y}</option>`;
+  }
+  return `<option value="">Year</option>${opts}`;
+}
+
+/** Build <option> markup for a plain dropdown from a list of allowed values. */
+function dropdownOptionsHtml(options, selected = "", placeholder = "Select…") {
+  const opts = options.map(
+    (o) => `<option value="${o}" ${o === selected ? "selected" : ""}>${o}</option>`
+  ).join("");
+  return `<option value="">${placeholder}</option>${opts}`;
+}
+
+/** Split a "MMM YYYY" or bare "YYYY" date string into { month, year } for populating selects. */
+function splitDateString(value) {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return { month: "", year: "" };
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 2 && MONTH_NAMES.includes(parts[0])) {
+    return { month: parts[0], year: parts[1] };
+  }
+  return { month: "", year: trimmed };
+}
+
+/** Combine month + year select values back into the canonical date string ("MMM YYYY" or "YYYY", or ""). */
+function combineDateSelects(month, year) {
+  if (!year) return "";
+  return month ? `${month} ${year}` : year;
+}
+
 function formatSalary(min, max) {
   if (min == null && max == null) return "Salary not specified";
   const fmt = (n) => `RM${n.toLocaleString()}`;
@@ -66,7 +137,15 @@ async function apiFetch(path, options = {}) {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail = body.detail || detail;
+      if (body.detail) {
+        // FastAPI returns a plain string for HTTPException, but a LIST of
+        // {msg, loc, ...} objects for pydantic validation errors (422s).
+        // Handle both so callers always get a readable string, never
+        // "[object Object]".
+        detail = Array.isArray(body.detail)
+          ? body.detail.map((d) => d.msg || JSON.stringify(d)).join("; ")
+          : body.detail;
+      }
     } catch (_) {}
     throw new Error(detail);
   }
@@ -146,7 +225,10 @@ async function uploadResume(seekerId, file) {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || "Upload failed");
+    const detail = Array.isArray(body.detail)
+      ? body.detail.map((d) => d.msg || JSON.stringify(d)).join("; ")
+      : body.detail;
+    throw new Error(detail || "Upload failed");
   }
   return res.json();
 }

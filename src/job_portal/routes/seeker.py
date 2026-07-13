@@ -414,6 +414,7 @@ def parse_seeker_resume(seeker_id: int, db: Session = Depends(get_db)) -> Parsed
         full_name=result.full_name,
         email=result.email,
         phone=result.phone,
+        bio=result.bio,
         skills=result.skills,
         experience=result.experience,
         education=result.education,
