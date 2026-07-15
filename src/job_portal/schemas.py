@@ -130,6 +130,152 @@ class JobOut(BaseModel):
         )
 
 
+# ---------- Employer job management (Teammate A) ----------
+#
+# Status values stored on Job.status are "draft" / "open" / "closed" — NOT
+# "active". The seeker-facing GET /api/jobs filters on Job.status == "open",
+# so employer-side code keeps using "open" rather than introducing "active",
+# to avoid silently breaking that query. The employer UI is free to
+# *display* "open" as "Active" — that's a presentation choice, not a change
+# to the stored value.
+#
+# Note: this reuses services/credibility.compute_credibility_score (added
+# by a teammate) rather than defining a second, separate scoring function —
+# one credibility number, shared by seeker and employer views alike.
+
+
+def _looks_like_gibberish(text: str) -> bool:
+    """
+    Lightweight, non-NLP nonsense filter. Doesn't try to judge whether text
+    is *meaningful* — just catches the obvious junk-input patterns:
+      - purely numeric ("123")
+      - very few distinct characters repeated to pad out a length
+        requirement ("123123123123", "aaaaaaaaaa", "ababababab")
+    """
+    stripped = text.strip()
+    if not stripped:
+        return True
+    if stripped.isdigit():
+        return True
+    letters_only = stripped.replace(" ", "")
+    if len(letters_only) >= 6 and len(set(letters_only.lower())) <= 3:
+        return True
+    return False
+
+
+class JobCreate(BaseModel):
+    """Body for POST /api/employer/jobs and PUT /api/employer/jobs/{id}.
+
+    Mirrors the validation already enforced in the vanilla-JS frontend
+    (title length, description length, at least one skill) — enforced here
+    too because client-side checks can always be bypassed by calling the
+    API directly. Also rejects obvious placeholder/junk content (see
+    _looks_like_gibberish above) — not a guarantee of quality writing, just
+    a filter for the "123123123" / "aaaaaaaa" style of test input.
+    """
+
+    title: str = Field(..., min_length=1, max_length=80)
+    location: Optional[str] = Field("", max_length=200)
+    state: Optional[str] = Field("", max_length=100)
+    job_type: Optional[str] = Field("Full-time", max_length=30)
+    salary_min: Optional[int] = Field(None, ge=0)
+    salary_max: Optional[int] = Field(None, ge=0)
+    skills_required: List[str] = Field(default_factory=list)
+    description: str = Field(..., min_length=20)
+    positions_available: int = Field(1, ge=1, le=50)
+
+    @field_validator("title")
+    @classmethod
+    def _title_not_gibberish(cls, title: str) -> str:
+        if _looks_like_gibberish(title):
+            raise ValueError("Please enter a real job title.")
+        return title
+
+    @field_validator("description")
+    @classmethod
+    def _description_not_gibberish(cls, description: str) -> str:
+        if _looks_like_gibberish(description):
+            raise ValueError("Please write a real description, not placeholder text.")
+        unique_words = {w.lower() for w in description.split()}
+        if len(unique_words) < 3:
+            raise ValueError("Please write a fuller description (a few different words, not just one repeated).")
+        return description
+
+    @field_validator("skills_required")
+    @classmethod
+    def _require_at_least_one_skill(cls, skills: List[str]) -> List[str]:
+        cleaned = [s.strip() for s in skills if s.strip()]
+        if not cleaned:
+            raise ValueError("Add at least one required skill.")
+        if len(cleaned) > 15:
+            raise ValueError("A job posting can list at most 15 skills.")
+        for skill in cleaned:
+            if len(skill) < 2:
+                raise ValueError(f'"{skill}" is too short to be a real skill.')
+            if _looks_like_gibberish(skill):
+                raise ValueError(f'"{skill}" doesn\'t look like a real skill.')
+        return cleaned
+
+    @field_validator("salary_max")
+    @classmethod
+    def _max_not_below_min(cls, salary_max, info):
+        salary_min = info.data.get("salary_min")
+        if salary_max is not None and salary_min is not None and salary_max < salary_min:
+            raise ValueError("Maximum salary can't be lower than minimum salary.")
+        return salary_max
+
+
+class JobUpdate(JobCreate):
+    """Editing a job replaces all editable fields at once — same shape as JobCreate."""
+
+    pass
+
+
+class EmployerJobOut(BaseModel):
+    """Job data as returned to the employer managing it (richer than seeker-facing JobOut:
+    includes draft postings, not just open ones)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    employer_id: int
+    title: str
+    description: str
+    location: Optional[str] = ""
+    state: Optional[str] = ""
+    salary_min: Optional[int] = None
+    salary_max: Optional[int] = None
+    job_type: Optional[str] = "Full-time"
+    skills_required: List[str] = []
+    status: str
+    created_at: datetime
+    positions_available: int = 1
+    positions_filled: int = 0
+    positions_remaining: int = 1
+    credibility_score: int = 0
+
+    @classmethod
+    def from_job(cls, job, credibility_score: int = 0) -> "EmployerJobOut":
+        return cls(
+            id=job.id,
+            employer_id=job.employer_id,
+            title=job.title,
+            description=job.description,
+            location=job.location,
+            state=job.state,
+            salary_min=job.salary_min,
+            salary_max=job.salary_max,
+            job_type=job.job_type,
+            skills_required=job.skills_list(),
+            status=job.status,
+            created_at=job.created_at,
+            positions_available=job.positions_available,
+            positions_filled=job.positions_filled,
+            positions_remaining=job.positions_remaining(),
+            credibility_score=credibility_score,
+        )
+
+
 class ExperienceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

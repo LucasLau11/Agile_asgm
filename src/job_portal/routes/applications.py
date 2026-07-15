@@ -188,6 +188,13 @@ class StageUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+# The pipeline has no separate "Hired" stage — "Offered" is the closest
+# real signal that a position has actually been filled, so it's what
+# triggers the position-filled count (and auto-close) below. See
+# UI/html/applicant_detail.html's STAGES list for the full pipeline.
+_POSITION_FILLED_STAGE = "Offered"
+
+
 @router.post("/api/employer/applicant/{application_id}/update")
 async def api_update_applicant_stage(
     application_id: int,
@@ -195,15 +202,43 @@ async def api_update_applicant_stage(
     db: Session = Depends(get_db),
 ):
     """Consumed by applicant_detail.html's save button. Updates status/notes
-    and, if the status actually changed, creates a Notification for the seeker."""
+    and, if the status actually changed, creates a Notification for the seeker.
+
+    Also has a side effect on the job itself (Teammate A's territory):
+    moving an applicant to "Offered" counts as filling one of the job's
+    positions. Once positions_filled reaches positions_available, the
+    listing auto-closes so it stops accepting new applicants — an employer
+    hiring 1/1 shouldn't keep receiving applications for a role that's gone.
+    """
     app = db.query(Application).filter(Application.id == application_id).first()
     if not app:
         raise HTTPException(status_code=404, detail="Applicant record not found.")
 
     status_changed = app.status != body.stage
+    previous_stage = app.status
     app.status = body.stage
     if body.notes is not None:
         app.notes = body.notes
+
+    if status_changed and app.job is not None:
+        if body.stage == _POSITION_FILLED_STAGE and previous_stage != _POSITION_FILLED_STAGE:
+            app.job.positions_filled = min(
+                app.job.positions_filled + 1, app.job.positions_available
+            )
+            if (
+                app.job.positions_filled >= app.job.positions_available
+                and app.job.status == "open"
+            ):
+                app.job.status = "closed"
+        elif previous_stage == _POSITION_FILLED_STAGE and body.stage != _POSITION_FILLED_STAGE:
+            # Applicant un-offered (e.g. rescinded) — free the position back up.
+            # Note: this does NOT automatically reopen a job that auto-closed —
+            # reopening is a manual "Publish" action, since silently reopening
+            # a closed listing without the employer choosing to could be
+            # surprising (and there's currently no "reopen a closed job"
+            # button in job_management.html either — worth adding if this
+            # scenario turns out to matter for your sprint).
+            app.job.positions_filled = max(app.job.positions_filled - 1, 0)
 
     if status_changed:
         job_title = app.job.title if app.job else app.job_title

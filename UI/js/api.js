@@ -145,6 +145,9 @@ async function apiFetch(path, options = {}) {
     } catch (_) {}
     throw new Error(detail);
   }
+  // DELETE endpoints (like employer job deletion) return 204 No Content —
+  // res.json() would throw on the empty body, so short-circuit here.
+  if (res.status === 204) return null;
   return res.json();
 }
 
@@ -231,6 +234,51 @@ async function uploadResume(seekerId, file) {
 
 function scanResume(seekerId) {
   return apiFetch(`/api/seekers/${seekerId}/resume/parse`);
+}
+
+// ---------------------------------------------------------------------------
+// Employer job management (job_management.html)
+// ---------------------------------------------------------------------------
+
+function fetchEmployerJobs(employerId, { keyword = "", status = "" } = {}) {
+  const params = new URLSearchParams({ employer_id: employerId });
+  if (keyword) params.set("keyword", keyword);
+  if (status && status !== "all") params.set("status", status);
+  return apiFetch(`/api/employer/jobs?${params.toString()}`);
+}
+
+function createEmployerJob(employerId, payload) {
+  return apiFetch(`/api/employer/jobs?employer_id=${employerId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+function updateEmployerJob(employerId, jobId, payload) {
+  return apiFetch(`/api/employer/jobs/${jobId}?employer_id=${employerId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+function publishEmployerJob(employerId, jobId) {
+  return apiFetch(`/api/employer/jobs/${jobId}/publish?employer_id=${employerId}`, {
+    method: "POST",
+  });
+}
+
+function closeEmployerJob(employerId, jobId) {
+  return apiFetch(`/api/employer/jobs/${jobId}/close?employer_id=${employerId}`, {
+    method: "POST",
+  });
+}
+
+function deleteEmployerJob(employerId, jobId) {
+  return apiFetch(`/api/employer/jobs/${jobId}?employer_id=${employerId}`, {
+    method: "DELETE",
+  });
 }
 
 function trustSealHtml(score) {
