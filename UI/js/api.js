@@ -10,6 +10,17 @@ const TEST_SEEKERS = [
   { id: 3, label: "Seeker #3 — Priya" },
 ];
 
+// Mirrors TEST_SEEKERS but for the employer side (job_management,
+// employer_applications, applicant_detail). Job.employer_id in the DB
+// ranges 1-3 across seeded jobs, so this needs at least that many
+// entries or some employers' postings/applications become unreachable
+// from the UI no matter who's "acting as" who.
+const TEST_EMPLOYERS = [
+  { id: 1, label: "Employer #1 — ABC Technologies" },
+  { id: 2, label: "Employer #2 — Nova Digital" },
+  { id: 3, label: "Employer #3 — Everest Analytics" },
+];
+
 // Used to populate the state/region filter dropdown on Browse Jobs.
 const MALAYSIA_STATES = [
   "Remote", "Kuala Lumpur", "Selangor", "Penang", "Johor", "Perak",
@@ -123,6 +134,39 @@ function renderDevUserBar(containerId) {
 
   document.getElementById("devUserSelect").addEventListener("change", (e) => {
     setCurrentSeekerId(e.target.value);
+    location.reload();
+  });
+}
+
+function getCurrentEmployerId() {
+  return Number(localStorage.getItem("currentEmployerId") || TEST_EMPLOYERS[0].id);
+}
+
+function setCurrentEmployerId(id) {
+  localStorage.setItem("currentEmployerId", id);
+}
+
+// Employer-side equivalent of renderDevUserBar. Use this instead on
+// employer-facing pages (job_management, employer_applications,
+// applicant_detail) so "acting as" actually changes which employer_id
+// is queried, instead of every page being stuck on a hardcoded id.
+function renderDevEmployerBar(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const current = getCurrentEmployerId();
+  const options = TEST_EMPLOYERS.map(
+    (e) => `<option value="${e.id}" ${e.id === current ? "selected" : ""}>${e.label}</option>`
+  ).join("");
+
+  container.innerHTML = `
+    Acting as:
+    <select id="devEmployerSelect">${options}</select>
+    <span style="opacity:0.75">(Sprint 1 stand-in for login — real auth arrives Sprint 3)</span>
+  `;
+
+  document.getElementById("devEmployerSelect").addEventListener("change", (e) => {
+    setCurrentEmployerId(e.target.value);
     location.reload();
   });
 }

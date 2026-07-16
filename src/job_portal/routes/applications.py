@@ -10,10 +10,28 @@ from pydantic import BaseModel
 
 from job_portal.database import get_db
 from job_portal.models import Application, Job, SeekerProfile, Notification
-from services.credibility import compute_credibility_score
+from job_portal.services.credibility import compute_credibility_score
 
 router = APIRouter(tags=["Applications Core Engine"])
 templates = Jinja2Templates(directory="UI/html")
+
+# Mirrors TEST_EMPLOYERS in api.js. There's no Employer table yet — jobs
+# only carry a numeric employer_id — so this is the single source of
+# truth for turning that id into a display name on the backend. Every
+# application used to be stamped with a hardcoded "ABC Technologies"
+# regardless of which employer actually posted the job; this replaces
+# that with a real per-job lookup.
+EMPLOYER_DIRECTORY = {
+    1: "ABC Technologies",
+    2: "Nova Digital",
+    3: "Everest Analytics",
+}
+
+
+def _company_name_for(job: Optional[Job]) -> str:
+    if job is None:
+        return "Unknown Company"
+    return EMPLOYER_DIRECTORY.get(job.employer_id, f"Employer #{job.employer_id}")
 
 
 def _skills_list(csv_str: Optional[str]) -> list[str]:
@@ -47,7 +65,12 @@ def _humanize(dt: Optional[datetime]) -> str:
 
 
 @router.get("/apply", response_class=HTMLResponse)
-async def get_apply_page(request: Request, job_id: int, db: Session = Depends(get_db)):
+async def get_apply_page(
+    request: Request,
+    job_id: int,
+    seeker_id: int = 1,
+    db: Session = Depends(get_db),
+):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="The targeted vacancy posting does not exist.")
@@ -57,7 +80,7 @@ async def get_apply_page(request: Request, job_id: int, db: Session = Depends(ge
     return templates.TemplateResponse(
         request=request,
         name="apply_job.html",
-        context={"job": job}
+        context={"job": job, "seeker_id": seeker_id},
     )
 
 
@@ -65,6 +88,7 @@ async def get_apply_page(request: Request, job_id: int, db: Session = Depends(ge
 async def handle_application(
     request: Request,
     job_id: int = Form(...),
+    seeker_id: int = Form(1),
     cover_letter: str = Form(None),
     resume: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db)
@@ -77,17 +101,21 @@ async def handle_application(
         with open(file_path, "wb") as buffer:
             buffer.write(await resume.read())
 
+    profile = db.query(SeekerProfile).filter(SeekerProfile.seeker_id == seeker_id).first()
+    seeker_name = (profile.full_name if profile and profile.full_name else f"Seeker #{seeker_id}")
+    seeker_email = (profile.email if profile and profile.email else f"seeker{seeker_id}@email.com")
+
     new_application = Application(
-        seeker_id=1,  # Default Seeker ID (Aisha) — no auth system yet
-        seeker_name="Aisha Rahman",
+        seeker_id=seeker_id,
+        seeker_name=seeker_name,
         job_id=job_id,
         job_title=job.title if job else "Backend Engineer",
-        company_name="ABC Technologies",
+        company_name=_company_name_for(job),
         skills=job.skills_required if job else "",
         status="Applied",
         applied_date=datetime.now().strftime("%d %B %Y"),
         cover_letter=cover_letter or "",
-        email="aisha@email.com",
+        email=seeker_email,
     )
     db.add(new_application)
     db.commit()
@@ -96,15 +124,17 @@ async def handle_application(
 
 
 @router.get("/my-applications-fragment", response_class=HTMLResponse)
-async def get_applications_fragment(request: Request, db: Session = Depends(get_db)):
-    records = db.query(Application).filter(Application.seeker_id == 1).all()
+async def get_applications_fragment(
+    request: Request, seeker_id: int = Query(1), db: Session = Depends(get_db)
+):
+    records = db.query(Application).filter(Application.seeker_id == seeker_id).all()
 
     formatted_apps = []
     for app in records:
         skills_list = _skills_list(app.job.skills_required) if app.job else _skills_list(app.skills)
         formatted_apps.append({
             "job_title": app.job.title if app.job else app.job_title,
-            "company_name": app.company_name or "ABC Technologies",
+            "company_name": _company_name_for(app.job) if app.job else (app.company_name or "Unknown Company"),
             "applied_date": app.applied_date,
             "skills": skills_list,
             "status": app.status
@@ -129,7 +159,7 @@ async def api_get_applications(seeker_id: int = Query(1), db: Session = Depends(
         results.append({
             "id": app.id,
             "job_title": app.job.title if app.job else app.job_title,
-            "company": app.company_name or "ABC Technologies",
+            "company": _company_name_for(app.job) if app.job else (app.company_name or "Unknown Company"),
             "applied_date": app.applied_date,
             "skills": skills_list,
             "status": app.status,

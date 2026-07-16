@@ -812,7 +812,7 @@
     }
     async function injectApplicationsTracker() {
       try {
-        const response = await fetch('/my-applications-fragment');
+        const response = await fetch(`/my-applications-fragment?seeker_id=${seekerId}`);
         if (response.ok) {
           document.getElementById('applicationsTrackerContainer').innerHTML = await response.text();
         }

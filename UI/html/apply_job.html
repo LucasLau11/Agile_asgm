@@ -20,13 +20,13 @@
   </nav>
 </header>
 
-
-<div class="dev-user-bar">
-  Acting as: Seeker #1 — Aisha
-  <span style="opacity:0.75">
-    (login stand-in for Sprint 1)
-  </span>
-</div>
+<!--
+  Was hardcoded to "Acting as: Seeker #1 — Aisha" as plain text, with no
+  way to actually change who's applying. Swapped for the same live
+  dev-user dropdown every other page uses, so this page reflects and
+  changes with whoever is actually selected.
+-->
+<div class="dev-user-bar" id="devUserBar"></div>
 
 <main class="page">
   <h1>Apply for Job</h1>
@@ -56,6 +56,10 @@
 
     <form action="/apply" method="POST" enctype="multipart/form-data">
       <input type="hidden" name="job_id" value="{{ job.id }}">
+      <!-- Filled in by JS below from the dev-user dropdown / URL, so the
+           backend knows WHICH seeker is submitting this application
+           instead of defaulting to seeker #1 every time. -->
+      <input type="hidden" name="seeker_id" id="seekerIdField" value="{{ seeker_id }}">
 
       <div class="form-group">
         <label>Cover Letter</label>
@@ -74,6 +78,15 @@
     </form>
   </div>
 </main>
+
+<script src="/UI/js/api.js"></script>
+<script>
+  renderDevUserBar("devUserBar");
+  // Keep the hidden field in sync if the user switches seekers on this
+  // page (renderDevUserBar reloads the page on change, so this mainly
+  // guards the very first render before any reload).
+  document.getElementById("seekerIdField").value = getCurrentSeekerId();
+</script>
 
 </body>
 </html>
