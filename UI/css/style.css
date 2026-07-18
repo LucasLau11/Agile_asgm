@@ -57,7 +57,27 @@ a { color: inherit; }
   opacity: 0.85;
 }
 .topbar nav a:hover { opacity: 1; text-decoration: underline; }
+.topbar nav a.active { opacity: 1; text-decoration: underline; }
 
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.role-switch {
+  background: var(--paper);
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 6px 16px;
+  border-radius: 999px;
+  opacity: 1;
+  white-space: nowrap;
+}
+.role-switch:hover { background: var(--gold); color: var(--paper); }
 /* ---------- Test-user selector (Sprint 1 stand-in for login) ---------- */
 
 .dev-user-bar {

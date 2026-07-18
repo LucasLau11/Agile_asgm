@@ -254,8 +254,8 @@ async def upload_resume(
     if safe_extension is None:
         raise HTTPException(
             status_code=400,
-            detail="Resume must be a genuine PDF or Word document (.pdf, .doc, .docx). "
-            "The file's content didn't match any of those formats.",
+            detail="Resume must be a genuine PDF or Word (.docx) document. "
+            "The file's content didn't match either of those formats.",
         )
 
     os.makedirs(RESUME_UPLOAD_DIR, exist_ok=True)

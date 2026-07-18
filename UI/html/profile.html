@@ -8,12 +8,17 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">Job Portal</div>
+  <div class="brand">Job Portal</div>
+  <div class="topbar-right">
     <nav>
-      <a href="browse_job.html">Browse Jobs</a>
-      <a href="profile.html">My Profile</a>
+      <a href="/UI/html/browse_job.html">Browse Jobs</a>
+      <a href="/UI/html/my_application.html">My Applications</a>
+      <a href="/UI/html/notifications.html">Notifications</a>
+      <a href="/UI/html/profile.html">Profile</a>
     </nav>
-  </header>
+    <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
+  </div>
+</header>
   <div class="dev-user-bar" id="devUserBar"></div>
 
   <main class="page">
@@ -164,9 +169,9 @@
     <section class="profile-section">
       <h2>Resume</h2>
       <label class="resume-drop" for="resumeInput" style="display:block; cursor:pointer;">
-        Click to choose a PDF or Word document (max 5&nbsp;MB)
+        Click to choose a PDF or DOCX file (max 5&nbsp;MB)
       </label>
-      <input type="file" id="resumeInput" accept=".pdf,.doc,.docx" style="display:none" />
+      <input type="file" id="resumeInput" accept=".pdf,.docx" style="display:none" />
       <p class="status-msg" id="resumeStatus"></p>
       <div id="resumeCurrent"></div>
       <div id="scanResumeContainer"></div>
@@ -782,6 +787,18 @@
       const file = e.target.files[0];
       if (!file) return;
       const statusEl = document.getElementById("resumeStatus");
+
+      // Quick client-side check for instant feedback. This is just UX —
+      // the backend still verifies the actual file content (magic bytes)
+      // before accepting it, since a renamed extension can't be trusted.
+      const lowerName = file.name.toLowerCase();
+      if (!lowerName.endsWith(".pdf") && !lowerName.endsWith(".docx")) {
+        statusEl.textContent = "Upload failed: only PDF or DOCX files are accepted.";
+        statusEl.className = "status-msg error";
+        e.target.value = ""; // reset the picker so the same invalid file can be reselected after fixing
+        return;
+      }
+
       statusEl.textContent = "Uploading…";
       statusEl.className = "status-msg";
       try {
