@@ -1,5 +1,11 @@
 fastapi>=0.115
 uvicorn>=0.30
+sqlalchemy>=2.0
+python-multipart>=0.0.9
+jinja2>=3.1
+pdfplumber>=0.11
+python-docx>=1.1
+email-validator>=2.1
 
 [dev]
 pytest
@@ -11,3 +17,4 @@ black
 mypy
 fastapi[testclient]
 httpx
+reportlab

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>View Applications</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/application.css" />
+</head>
+<body>
+
+  <header class="topbar">
+  <div class="brand">Job Portal</div>
+  <div class="topbar-right">
+    <nav>
+      <a href="/UI/html/job_management.html">My Postings</a>
+      <a href="/UI/html/employer_applications.html">Applications</a>
+    </nav>
+    <a href="/UI/html/browse_job.html" class="role-switch">Job Seeker</a>
+  </div>
+</header>
+
+  <div class="dev-user-bar" id="devUserBar"></div>
+
+  <main class="page">
+    <h1>Job Applications</h1>
+    <p class="subtitle">Review candidates who applied for your vacancies.</p>
+
+    <div class="detail-description">
+      <p>Total Applications: <strong id="totalCount">0</strong></p>
+    </div>
+
+    <br>
+
+    <div class="applicant-list" id="applicantList">
+      <p class="subtitle">Loading applications...</p>
+    </div>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script>
+    // Was hardcoded to 1, so this page could only ever show applications
+    // for employer #1 (ABC Technologies) — any job posted under a
+    // different employer_id (e.g. Frontend Developer, employer_id=2)
+    // could never surface here no matter who actually applied.
+    // getCurrentEmployerId() reads the same dev-user-style dropdown
+    // pattern used for seekers, so switching "Acting as" actually changes
+    // which employer's applications get queried.
+    const employerId = getCurrentEmployerId();
+    if (typeof renderDevEmployerBar === "function") {
+      renderDevEmployerBar("devUserBar");
+    } else {
+      document.getElementById("devUserBar").innerHTML = `
+        Acting as: Employer #${employerId} — ABC Technologies
+        <span style="opacity:0.75">(login stand-in for Sprint 1)</span>
+      `;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function statusClassFor(status) {
+      if (status === "Screening") return "status-screening";
+      if (status === "Interview") return "status-interview";
+      if (status === "Rejected") return "status-rejected";
+      if (status === "Offered") return "status-interview";
+      return "status-applied";
+    }
+
+    function applicantCardHtml(applicant) {
+      const skillsHtml = (applicant.skills || [])
+        .map(skill => `<span class="skill-tag">${escapeHtml(skill)}</span>`)
+        .join("");
+
+      return `
+        <div class="applicant-card">
+          <div class="applicant-header">
+            <div class="applicant-name">${escapeHtml(applicant.seeker)}</div>
+            <span class="application-status ${statusClassFor(applicant.status)}">
+              ${escapeHtml(applicant.status)}
+            </span>
+          </div>
+          <div class="applicant-info">
+            <p>Applying for: <strong>${escapeHtml(applicant.job_title)}</strong></p>
+            <p>Email: ${escapeHtml(applicant.email)}</p>
+            <p>Skills: ${skillsHtml}</p>
+            <p>Applied Date: ${escapeHtml(applicant.applied_date)}</p>
+          </div>
+          <a href="applicant_detail.html?id=${applicant.id}" class="btn btn-primary"
+             style="text-decoration:none; display:inline-block; text-align:center; margin-top:10px;">
+             View Application
+          </a>
+        </div>
+      `;
+    }
+
+    async function loadApplicants() {
+      const listEl = document.getElementById("applicantList");
+      try {
+        const response = await fetch(`/api/employer/applications?employer_id=${employerId}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error("Failed to pull database entries");
+        const applicants = await response.json();
+
+        document.getElementById("totalCount").textContent = applicants.length;
+
+        if (applicants.length === 0) {
+          listEl.innerHTML = `
+            <p class="subtitle" style="text-align:center; color:#777; margin-top:30px;">
+              No one has applied to your job postings yet.
+            </p>
+          `;
+          return;
+        }
+
+        listEl.innerHTML = applicants.map(applicantCardHtml).join("");
+      } catch (err) {
+        console.error(err);
+        listEl.innerHTML = `
+          <p class="status-msg error">
+            Couldn't load applications: ${escapeHtml(err.message)}. Is the FastAPI server running?
+          </p>
+        `;
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", loadApplicants);
+    // Also re-fetch on 'pageshow' so navigating back to this page (e.g. after
+    // submitting a new application elsewhere) doesn't show a stale list from
+    // the browser's back-forward cache — DOMContentLoaded doesn't fire again
+    // on a bfcache restore, but pageshow always does.
+    window.addEventListener("pageshow", (event) => {
+      if (event.persisted) {
+        loadApplicants();
+      }
+    });
+  </script>
+</body>
+</html>

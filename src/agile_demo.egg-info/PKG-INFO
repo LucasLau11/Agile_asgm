@@ -5,6 +5,12 @@ Summary: Teaching repo: Agile + Tests + CI/CD
 Requires-Python: >=3.11
 Requires-Dist: fastapi>=0.115
 Requires-Dist: uvicorn>=0.30
+Requires-Dist: sqlalchemy>=2.0
+Requires-Dist: python-multipart>=0.0.9
+Requires-Dist: jinja2>=3.1
+Requires-Dist: pdfplumber>=0.11
+Requires-Dist: python-docx>=1.1
+Requires-Dist: email-validator>=2.1
 Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
 Requires-Dist: pytest-cov; extra == "dev"
@@ -15,3 +21,4 @@ Requires-Dist: black; extra == "dev"
 Requires-Dist: mypy; extra == "dev"
 Requires-Dist: fastapi[testclient]; extra == "dev"
 Requires-Dist: httpx; extra == "dev"
+Requires-Dist: reportlab; extra == "dev"

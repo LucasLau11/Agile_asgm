@@ -1,0 +1,53 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+# dorny/test-reporter needs write access to publish check results and
+# annotate the commit/PR with the pass/fail report.
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install project + test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        env:
+          # Safety net in case pyproject.toml isn't configured for
+          # src-layout discovery yet — mirrors seed.py's manual
+          # sys.path.insert(0, "src").
+          PYTHONPATH: src
+        # `if: always()`-friendly: continue to the report step below even
+        # if some tests fail, so the report actually shows the failures
+        # instead of the job just stopping.
+        run: pytest -vv --junitxml=test-results.xml
+
+      - name: Publish test report
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Pytest Results
+          path: test-results.xml
+          reporter: java-junit
+          fail-on-error: "true"

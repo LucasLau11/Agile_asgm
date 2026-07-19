@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Job Posting Management</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">Job Portal</div>
+  <div class="topbar-right">
+    <nav>
+      <a href="/UI/html/job_management.html">My Postings</a>
+      <a href="/UI/html/employer_applications.html">Applications</a>
+    </nav>
+    <a href="/UI/html/browse_job.html" class="role-switch">Job Seeker</a>
+  </div>
+</header>
+
+<div class="dev-user-bar" id="devUserBar"></div>
+
+<div class="page">
+
+    <h1>Job Posting Management</h1>
+    <p class="subtitle">Manage all of your company's job postings.</p>
+
+    <!-- List view -->
+    <div id="listView">
+        <div class="search-bar">
+            <input type="text" id="searchBox" placeholder="Search job title...">
+
+            <select id="statusFilter" class="btn btn-secondary">
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="draft">Draft</option>
+                <option value="closed">Closed</option>
+            </select>
+
+            <button class="btn btn-primary" onclick="openForm()">+ New Job</button>
+        </div>
+
+        <div class="job-list" id="jobList"></div>
+    </div>
+
+    <!-- Detail view -->
+    <div id="detailView" style="display:none;">
+        <button class="btn btn-secondary" onclick="closeDetail()">&larr; Back to Postings</button>
+
+        <div class="detail-header" style="margin-top:20px;">
+            <div>
+                <h1 id="detailTitle"></h1>
+                <div class="job-meta" id="detailMeta"></div>
+                <div id="detailSkills" style="margin-top:8px;"></div>
+                <p class="status-msg" id="detailStatus"></p>
+            </div>
+            <div class="trust-seal" id="detailSeal">
+                <span class="score" id="detailScore">0%</span>
+                <span class="label">Complete</span>
+            </div>
+        </div>
+
+        <div class="detail-description" id="detailDescription"></div>
+    </div>
+
+    <!-- Form view (create / edit) -->
+    <div id="formView" style="display:none;">
+        <button class="btn btn-secondary" onclick="closeForm()">&larr; Back to Postings</button>
+
+        <h1 id="formHeading" style="margin-top:20px;"></h1>
+
+        <div class="profile-section">
+            <h2>Job Details</h2>
+
+            <label class="job-meta">Job Title</label>
+            <div class="search-bar">
+                <input type="text" id="formTitle" placeholder="e.g. Software Engineer">
+            </div>
+
+            <label class="job-meta">Location</label>
+            <div class="search-bar">
+                <input type="text" id="formLocation" placeholder="e.g. Kuala Lumpur">
+            </div>
+
+            <label class="job-meta">Employment Type</label>
+            <div class="search-bar">
+                <select id="formType" class="btn btn-secondary">
+                    <option>Full-time</option>
+                    <option>Part-time</option>
+                    <option>Contract</option>
+                    <option>Internship</option>
+                    <option>Remote</option>
+                </select>
+            </div>
+
+            <label class="job-meta">Min Salary (RM/month)</label>
+            <div class="search-bar">
+                <input type="number" id="formSalaryMin" placeholder="e.g. 3000" min="0" style="max-width:160px;">
+            </div>
+
+            <label class="job-meta">Max Salary (RM/month)</label>
+            <div class="search-bar">
+                <input type="number" id="formSalaryMax" placeholder="e.g. 8000" min="0" style="max-width:160px;">
+            </div>
+
+            <label class="job-meta">Positions Available</label>
+            <div class="search-bar">
+                <input type="number" id="formPositions" min="1" max="50" step="1" value="1" style="max-width:120px;">
+            </div>
+        </div>
+
+        <div class="profile-section">
+            <h2>Required Skills</h2>
+
+            <label class="job-meta">Choose from common skills</label>
+            <div class="search-bar">
+                <select id="formSkillSelect" class="btn btn-secondary">
+                    <option value="">Select a skill…</option>
+                </select>
+                <button type="button" class="btn btn-secondary" onclick="addSkillFromDropdown()">Add</button>
+            </div>
+
+            <div class="skills-editor" id="formSkills"></div>
+
+            <label class="job-meta">Or add a custom skill</label>
+            <div class="search-bar">
+                <input type="text" id="formSkillInput" placeholder="Add a skill and press Enter">
+                <button class="btn btn-secondary" onclick="addSkillFromInput()">Add</button>
+            </div>
+        </div>
+
+        <div class="profile-section">
+            <h2>Description</h2>
+            <textarea id="formDescription" rows="6"
+                style="width:100%; padding:11px 14px; border:1px solid var(--line); border-radius:var(--radius); font-family:var(--font-body); font-size:0.95rem; background:var(--paper-raised); resize:vertical;"
+                placeholder="Describe the role, responsibilities, and requirements..."></textarea>
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button class="btn btn-secondary" onclick="closeForm()">Cancel</button>
+            <button class="btn btn-primary" id="saveJobBtn" onclick="saveJob()">Save Job Posting</button>
+        </div>
+
+        <p class="status-msg error" id="formError" style="display:none;"></p>
+    </div>
+
+</div>
+
+<script src="../js/api.js"></script>
+<script>
+/* ---------- State ---------- */
+
+// Common skills offered in the dropdown — employers can still type any
+// custom skill via the free-text input below it, this is just a shortcut
+// for the frequent ones.
+const COMMON_SKILLS = [
+    "Python", "JavaScript", "TypeScript", "Java", "C++", "SQL",
+    "React", "Node.js", "AWS", "Docker", "Kubernetes",
+    "Figma", "Adobe XD", "Excel", "Power BI",
+    "Communication", "Project Management", "Data Analysis",
+    "Machine Learning", "HTML/CSS",
+];
+
+// Sprint 1 stand-in — no employer login yet. Reads whichever employer is
+// currently selected in the "Acting as" dropdown (see renderDevEmployerBar
+// in api.js), so switching employers actually changes which postings show
+// up here, instead of every session being stuck looking at employer #1.
+const employerId = getCurrentEmployerId();
+if (typeof renderDevEmployerBar === "function") {
+    renderDevEmployerBar("devUserBar");
+} else {
+    document.getElementById("devUserBar").innerHTML = `
+        Acting as: Employer #${employerId}
+        <span style="opacity:0.75">(login stand-in for Sprint 1)</span>
+    `;
+}
+
+let jobs = [];               // populated from the backend — never hardcoded
+let formSkillsList = [];
+let editingJobId = null;     // null means "creating new"
+let editingJobData = null;   // full record of the job being edited, so fields
+                              // not shown on this form (state) survive a
+                              // save instead of being reset
+
+/* ---------- Data loading ---------- */
+
+async function loadJobs() {
+    const list = document.getElementById("jobList");
+    list.innerHTML = `<div class="empty-state">Loading job postings…</div>`;
+
+    const searchTerm = document.getElementById("searchBox").value.trim();
+    const statusValue = document.getElementById("statusFilter").value; // all / active / draft / closed
+    // The frontend's "Active" label maps to the backend's "open" status —
+    // see the note in schemas.py for why the stored value stays "open".
+    const backendStatus = statusValue === "active" ? "open" : statusValue;
+
+    try {
+        jobs = await fetchEmployerJobs(employerId, { keyword: searchTerm, status: backendStatus });
+        renderJobs();
+    } catch (err) {
+        list.innerHTML = `<div class="empty-state">Couldn't load job postings: ${escapeHtml(err.message)}</div>`;
+    }
+}
+
+/* ---------- Rendering: list ---------- */
+
+function renderJobs() {
+    const list = document.getElementById("jobList");
+
+    if (jobs.length === 0) {
+        const searchTerm = document.getElementById("searchBox").value.trim();
+        const statusValue = document.getElementById("statusFilter").value;
+        const message = (!searchTerm && statusValue === "all")
+            ? "No job postings yet. Click \u201c+ New Job\u201d to create your first one."
+            : "No job postings match your search.";
+        list.innerHTML = `<div class="empty-state">${message}</div>`;
+        return;
+    }
+
+    list.innerHTML = jobs.map(jobCardTemplate).join("");
+}
+
+function positionsSummary(job) {
+    const noun = job.positions_available === 1 ? "position" : "positions";
+    return `${job.positions_filled}/${job.positions_available} ${noun} filled`;
+}
+
+function jobCardTemplate(job) {
+    const skillTags = job.skills_required
+        .map(skill => `<span class="skill-tag">${escapeHtml(skill)}</span>`)
+        .join("");
+
+    let statusMsg = "";
+    let statusClass = "status-msg";
+    let actionButtons = "";
+
+    if (job.status === "open") {
+        statusMsg = `Active • ${positionsSummary(job)}`;
+        statusClass = "status-msg success";
+        actionButtons = `
+            <button class="btn btn-secondary" onclick="viewJob(${job.id})">View</button>
+            <button class="btn btn-secondary" onclick="openForm(${job.id})">Edit</button>
+            <button class="btn btn-primary" onclick="closeJob(${job.id})">Close</button>
+        `;
+    } else if (job.status === "draft") {
+        statusMsg = "Draft • Not Published";
+        actionButtons = `
+            <button class="btn btn-secondary" onclick="openForm(${job.id})">Edit</button>
+            <button class="btn btn-secondary" onclick="viewJob(${job.id})">View</button>
+            <button class="btn btn-primary" onclick="publishJob(${job.id})">Publish</button>
+            <button class="btn btn-secondary" onclick="deleteJob(${job.id})">Delete</button>
+        `;
+    } else {
+        // closed
+        statusMsg = `Closed • ${positionsSummary(job)}`;
+        statusClass = "status-msg error";
+        actionButtons = `
+            <button class="btn btn-secondary" onclick="viewJob(${job.id})">View</button>
+            <button class="btn btn-secondary" onclick="deleteJob(${job.id})">Delete</button>
+        `;
+    }
+
+    return `
+        <div class="job-card" data-status="${job.status}" data-id="${job.id}">
+            <div class="job-main">
+                <h3>${escapeHtml(job.title)}</h3>
+                <div class="job-meta">${escapeHtml(job.location || "Location not set")} • ${escapeHtml(job.job_type)} • ${escapeHtml(formatSalary(job.salary_min, job.salary_max))}</div>
+                ${skillTags}
+                <p class="${statusClass}">${statusMsg}</p>
+            </div>
+            <div>${actionButtons}</div>
+        </div>
+    `;
+}
+
+/* ---------- Rendering: detail ---------- */
+
+function viewJob(id) {
+    const job = findJob(id);
+    if (!job) return;
+
+    document.getElementById("detailTitle").textContent = job.title;
+    document.getElementById("detailMeta").textContent = `${job.location} • ${job.job_type} • ${formatSalary(job.salary_min, job.salary_max)}`;
+    document.getElementById("detailDescription").textContent = job.description || "No description provided.";
+
+    document.getElementById("detailSkills").innerHTML = job.skills_required
+        .map(skill => `<span class="skill-tag">${escapeHtml(skill)}</span>`)
+        .join("");
+
+    const statusEl = document.getElementById("detailStatus");
+    const sealEl = document.getElementById("detailSeal");
+
+    if (job.status === "open") {
+        statusEl.textContent = `Active • ${positionsSummary(job)}`;
+        statusEl.className = "status-msg success";
+    } else if (job.status === "draft") {
+        statusEl.textContent = "Draft • Not Published";
+        statusEl.className = "status-msg";
+    } else {
+        statusEl.textContent = `Closed • ${positionsSummary(job)}`;
+        statusEl.className = "status-msg error";
+    }
+
+    sealEl.className = job.credibility_score < 75 ? "trust-seal low" : "trust-seal";
+    document.getElementById("detailScore").textContent = `${job.credibility_score}%`;
+
+    showOnly("detailView");
+}
+
+function closeDetail() {
+    showOnly("listView");
+}
+
+/* ---------- Rendering: form ---------- */
+
+function openForm(id) {
+    formError(false);
+
+    if (id) {
+        // Edit mode — reuse the record already loaded in `jobs`, no extra
+        // network call needed since the list endpoint already returns
+        // every field the form (and the save payload) needs.
+        const job = findJob(id);
+        if (!job) return;
+
+        editingJobId = id;
+        editingJobData = job;
+        document.getElementById("formHeading").textContent = "Edit Job Posting";
+        document.getElementById("formTitle").value = job.title;
+        document.getElementById("formLocation").value = job.location;
+        document.getElementById("formType").value = job.job_type;
+        document.getElementById("formSalaryMin").value = job.salary_min ?? "";
+        document.getElementById("formSalaryMax").value = job.salary_max ?? "";
+        document.getElementById("formPositions").value = job.positions_available;
+        document.getElementById("formDescription").value = job.description || "";
+        formSkillsList = [...job.skills_required];
+    } else {
+        // Create mode
+        editingJobId = null;
+        editingJobData = null;
+        document.getElementById("formHeading").textContent = "New Job Posting";
+        document.getElementById("formTitle").value = "";
+        document.getElementById("formLocation").value = "";
+        document.getElementById("formType").value = "Full-time";
+        document.getElementById("formSalaryMin").value = "";
+        document.getElementById("formSalaryMax").value = "";
+        document.getElementById("formPositions").value = 1;
+        document.getElementById("formDescription").value = "";
+        formSkillsList = [];
+    }
+
+    document.getElementById("formSkillInput").value = "";
+    renderFormSkills();
+    showOnly("formView");
+}
+
+function closeForm() {
+    showOnly("listView");
+}
+
+function renderFormSkills() {
+    const container = document.getElementById("formSkills");
+
+    if (formSkillsList.length === 0) {
+        container.innerHTML = `<span class="job-meta">No skills added yet.</span>`;
+        return;
+    }
+
+    container.innerHTML = formSkillsList
+        .map((skill, index) => `
+            <span class="skill-chip">
+                ${skill}
+                <button type="button" onclick="removeFormSkill(${index})">&times;</button>
+            </span>
+        `)
+        .join("");
+}
+
+function populateSkillDropdown() {
+    const select = document.getElementById("formSkillSelect");
+    select.innerHTML = `<option value="">Select a skill…</option>` +
+        COMMON_SKILLS.map(skill => `<option value="${escapeHtml(skill)}">${escapeHtml(skill)}</option>`).join("");
+}
+
+function addSkillFromDropdown() {
+    const select = document.getElementById("formSkillSelect");
+    const value = select.value;
+    if (!value) return;
+
+    const alreadyExists = formSkillsList.some(s => s.toLowerCase() === value.toLowerCase());
+    if (!alreadyExists) {
+        formSkillsList.push(value);
+        renderFormSkills();
+    }
+    select.value = "";
+}
+
+function addSkillFromInput() {
+    const input = document.getElementById("formSkillInput");
+    const value = input.value.trim();
+
+    const alreadyExists = formSkillsList.some(s => s.toLowerCase() === value.toLowerCase());
+    if (value && !alreadyExists) {
+        formSkillsList.push(value);
+        renderFormSkills();
+    }
+    input.value = "";
+    input.focus();
+}
+
+function removeFormSkill(index) {
+    formSkillsList.splice(index, 1);
+    renderFormSkills();
+}
+
+function formError(message) {
+    const el = document.getElementById("formError");
+    if (!message) {
+        el.style.display = "none";
+        el.textContent = "";
+    } else {
+        el.style.display = "block";
+        el.textContent = message;
+    }
+}
+
+async function saveJob() {
+    const title = document.getElementById("formTitle").value.trim();
+    const location = document.getElementById("formLocation").value.trim();
+    const job_type = document.getElementById("formType").value;
+    const description = document.getElementById("formDescription").value.trim();
+    const positionsAvailable = parseInt(document.getElementById("formPositions").value, 10);
+
+    const salaryMinRaw = document.getElementById("formSalaryMin").value.trim();
+    const salaryMaxRaw = document.getElementById("formSalaryMax").value.trim();
+    const salaryMin = salaryMinRaw === "" ? null : parseInt(salaryMinRaw, 10);
+    const salaryMax = salaryMaxRaw === "" ? null : parseInt(salaryMaxRaw, 10);
+
+    // Fast client-side feedback — the backend re-validates all of this too
+    // (see JobCreate in schemas.py), since a client check alone can always
+    // be bypassed by calling the API directly.
+    if (!title) {
+        formError("Job title is required.");
+        return;
+    }
+    if (title.length > 80) {
+        formError("Job title must be under 80 characters.");
+        return;
+    }
+    if (!location) {
+        formError("Location is required.");
+        return;
+    }
+    if (formSkillsList.length === 0) {
+        formError("Add at least one required skill.");
+        return;
+    }
+    if (description.length < 20) {
+        formError("Please provide a more detailed description (at least 20 characters).");
+        return;
+    }
+    if (!Number.isInteger(positionsAvailable) || positionsAvailable < 1) {
+        formError("Positions available must be at least 1.");
+        return;
+    }
+    if (editingJobData && positionsAvailable < editingJobData.positions_filled) {
+        formError(`Positions available can't be less than ${editingJobData.positions_filled} — that's how many are already filled.`);
+        return;
+    }
+    if (salaryMinRaw !== "" && (Number.isNaN(salaryMin) || salaryMin < 0)) {
+        formError("Minimum salary must be a positive number.");
+        return;
+    }
+    if (salaryMaxRaw !== "" && (Number.isNaN(salaryMax) || salaryMax < 0)) {
+        formError("Maximum salary must be a positive number.");
+        return;
+    }
+    if (salaryMin !== null && salaryMax !== null && salaryMax < salaryMin) {
+        formError("Maximum salary can't be lower than minimum salary.");
+        return;
+    }
+
+    // "state" isn't collected by this form yet — carried forward from the
+    // record being edited so it isn't silently wiped by an unrelated save.
+    const payload = {
+        title,
+        location,
+        job_type,
+        description,
+        skills_required: [...formSkillsList],
+        state: editingJobData ? (editingJobData.state || "") : "",
+        salary_min: salaryMin,
+        salary_max: salaryMax,
+        positions_available: positionsAvailable,
+    };
+
+    const saveBtn = document.getElementById("saveJobBtn");
+    saveBtn.disabled = true;
+    try {
+        if (editingJobId) {
+            await updateEmployerJob(employerId, editingJobId, payload);
+        } else {
+            await createEmployerJob(employerId, payload);
+        }
+        showOnly("listView");
+        await loadJobs();
+    } catch (err) {
+        // Surfaces both plain-text details (e.g. the duplicate-title 409)
+        // and flattened validation errors (see apiFetch in api.js).
+        formError(err.message);
+    } finally {
+        saveBtn.disabled = false;
+    }
+}
+
+/* ---------- View switching ---------- */
+
+function showOnly(viewId) {
+    ["listView", "detailView", "formView"].forEach(id => {
+        document.getElementById(id).style.display = (id === viewId) ? "block" : "none";
+    });
+}
+
+/* ---------- Actions ---------- */
+
+function findJob(id) {
+    return jobs.find(job => job.id === id);
+}
+
+async function publishJob(id) {
+    try {
+        await publishEmployerJob(employerId, id);
+        await loadJobs();
+    } catch (err) {
+        alert(`Couldn't publish this job: ${err.message}`);
+    }
+}
+
+async function closeJob(id) {
+    const job = findJob(id);
+    if (!job) return;
+
+    const confirmed = confirm(`Close "${job.title}"? It will stop accepting applications.`);
+    if (!confirmed) return;
+
+    try {
+        await closeEmployerJob(employerId, id);
+        await loadJobs();
+    } catch (err) {
+        alert(`Couldn't close this job: ${err.message}`);
+    }
+}
+
+async function deleteJob(id) {
+    const job = findJob(id);
+    if (!job) return;
+
+    const confirmed = confirm(`Delete "${job.title}"? This can't be undone.`);
+    if (!confirmed) return;
+
+    try {
+        await deleteEmployerJob(employerId, id);
+        await loadJobs();
+    } catch (err) {
+        alert(`Couldn't delete this job: ${err.message}`);
+    }
+}
+
+/* ---------- Wiring ---------- */
+
+// Debounced so typing a search term doesn't fire a request per keystroke.
+let searchDebounceTimer;
+document.getElementById("searchBox").addEventListener("input", () => {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(loadJobs, 300);
+});
+
+document.getElementById("statusFilter").addEventListener("change", loadJobs);
+
+document.getElementById("formSkillInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        addSkillFromInput();
+    }
+});
+
+populateSkillDropdown();
+loadJobs();
+</script>
+
+</body>
+</html>

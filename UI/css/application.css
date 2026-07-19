@@ -1,0 +1,329 @@
+/* ==========================================
+   Application & Recruitment Workflow Module
+   ========================================== */
+@import url("style.css");
+
+/* ---------- Application Cards ---------- */
+
+.application-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+
+.application-card {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  transition: border-color 0.15s ease;
+}
+
+
+.application-card:hover {
+  border-color: var(--trust);
+}
+
+
+.application-main {
+  flex: 1;
+}
+
+
+.application-card h3 {
+  font-family: var(--font-display);
+  margin: 0 0 6px;
+  font-size: 1.2rem;
+}
+
+
+.application-meta {
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  margin-bottom: 10px;
+}
+
+
+
+/* ---------- Status Badge ---------- */
+
+.application-status {
+  display: inline-block;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+
+.status-applied {
+  background: #e8f0ff;
+  color: #2855a6;
+}
+
+
+.status-screening {
+  background: #fff3cd;
+  color: #8a6500;
+}
+
+
+.status-interview {
+  background: var(--trust-soft);
+  color: var(--trust);
+}
+
+
+.status-offered {
+  background: #dff5df;
+  color: #267326;
+}
+
+
+.status-rejected {
+  background: #fdeaea;
+  color: var(--danger);
+}
+
+
+
+/* ---------- Apply Job Form ---------- */
+
+
+.apply-container {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+
+
+.form-group {
+  margin-bottom: 18px;
+}
+
+
+.form-group label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+
+.form-group textarea,
+.form-group input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  background: var(--paper-raised);
+}
+
+
+.form-group textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+
+
+.resume-upload {
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 25px;
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+
+
+/* ---------- Notification Cards ---------- */
+
+
+.notification-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+
+.notification-card {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  display: flex;
+  gap: 16px;
+}
+
+
+.notification-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--trust-soft);
+  color: var(--trust);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+}
+
+
+.notification-content {
+  flex: 1;
+}
+
+
+.notification-content h3 {
+  margin: 0 0 5px;
+  font-size: 1rem;
+}
+
+
+.notification-time {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+}
+
+
+
+/* ---------- Employer Applicant Cards ---------- */
+
+
+.applicant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+
+.applicant-card {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+
+.applicant-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+
+.applicant-name {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+
+.applicant-info {
+  margin-top: 12px;
+  color: var(--ink-soft);
+}
+
+
+
+/* ---------- Recruitment Stage ---------- */
+
+
+.stage-box {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+
+
+.stage-select {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  background: white;
+}
+
+
+
+/* ---------- Timeline ---------- */
+
+
+.stage-timeline {
+  display: flex;
+  justify-content: space-between;
+  margin: 25px 0;
+}
+
+
+.stage-step {
+  text-align: center;
+  flex: 1;
+  position: relative;
+}
+
+
+.stage-circle {
+  width: 35px;
+  height: 35px;
+  border-radius: 50%;
+  background: var(--line);
+  margin: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+
+
+.stage-step.active .stage-circle {
+  background: var(--trust);
+  color: white;
+}
+
+
+.stage-label {
+  margin-top: 8px;
+  font-size: 0.75rem;
+}
+
+
+
+/* ---------- Notes ---------- */
+
+
+.notes-box {
+  width: 100%;
+  min-height: 100px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+}
+
+
+
+/* ---------- Responsive ---------- */
+
+
+@media(max-width:560px){
+
+  .application-card {
+    flex-direction: column;
+  }
+
+
+  .stage-timeline {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+}

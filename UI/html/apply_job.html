@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apply Job</title>
+
+  <link rel="stylesheet" href="/UI/css/application.css" />
+</head>
+
+<body>
+
+<header class="topbar">
+  <div class="brand">Job Portal</div>
+  <div class="topbar-right">
+    <nav>
+      <a href="/UI/html/browse_job.html">Browse Jobs</a>
+      <a href="/UI/html/my_application.html">My Applications</a>
+      <a href="/UI/html/notifications.html">Notifications</a>
+      <a href="/UI/html/profile.html">Profile</a>
+    </nav>
+    <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
+  </div>
+</header>
+
+<!--
+  Was hardcoded to "Acting as: Seeker #1 — Aisha" as plain text, with no
+  way to actually change who's applying. Swapped for the same live
+  dev-user dropdown every other page uses, so this page reflects and
+  changes with whoever is actually selected.
+-->
+<div class="dev-user-bar" id="devUserBar"></div>
+
+<main class="page">
+  <h1>Apply for Job</h1>
+  <p class="subtitle">Submit your application for the selected vacancy.</p>
+
+  <div class="apply-container">
+    <section class="detail-header">
+      <div>
+        <h2 class="detail-title">{{ job.title }}</h2>
+        <div class="job-meta">
+          ABC Technologies · {{ job.location or "Remote" }} · {{ job.state or "" }}
+        </div>
+        
+<div style="margin-top: 10px;">
+  <!-- Split the comma-separated string into a real array list -->
+  {% for skill in job.skills_required.split(',') %}
+    <span class="skill-tag">{{ skill.strip() }}</span>
+  {% endfor %}
+</div>
+      </div>
+
+      <div class="trust-seal">
+        <div class="score">{{ job.credibility_score or "N/A" }}</div>
+        <div class="label">Trust</div>
+      </div>
+    </section>
+
+    <form action="/apply" method="POST" enctype="multipart/form-data">
+      <input type="hidden" name="job_id" value="{{ job.id }}">
+      <!-- Filled in by JS below from the dev-user dropdown / URL, so the
+           backend knows WHICH seeker is submitting this application
+           instead of defaulting to seeker #1 every time. -->
+      <input type="hidden" name="seeker_id" id="seekerIdField" value="{{ seeker_id }}">
+
+      <div class="form-group">
+        <label>Cover Letter</label>
+        <textarea name="cover_letter" placeholder="Explain why you are suitable for this position..." required></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Upload Resume</label>
+        <div class="resume-upload">
+          <input type="file" name="resume">
+          <p>Upload your latest resume (PDF/DOC)</p>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="width:100%">Submit Application</button>
+    </form>
+  </div>
+</main>
+
+<script src="/UI/js/api.js"></script>
+<script>
+  renderDevUserBar("devUserBar");
+  // Keep the hidden field in sync if the user switches seekers on this
+  // page (renderDevUserBar reloads the page on change, so this mainly
+  // guards the very first render before any reload).
+  document.getElementById("seekerIdField").value = getCurrentSeekerId();
+</script>
+
+</body>
+</html>

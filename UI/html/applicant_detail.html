@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Applicant Details</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/application.css" />
+</head>
+<body>
+
+  <header class="topbar">
+  <div class="brand">Job Portal</div>
+  <div class="topbar-right">
+    <nav>
+      <a href="/UI/html/job_management.html">My Postings</a>
+      <a href="/UI/html/employer_applications.html">Applications</a>
+    </nav>
+    <a href="/UI/html/browse_job.html" class="role-switch">Job Seeker</a>
+  </div>
+</header>
+
+  <div class="dev-user-bar" id="devUserBar"></div>
+
+  <main class="page">
+    <h1>Applicant Details</h1>
+    <p class="subtitle">Review candidate information and update recruitment progress.</p>
+
+    <div id="applicantContainer">
+      <p class="subtitle">Loading applicant...</p>
+    </div>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script>
+    const employerId = 1;
+    if (typeof renderDevUserBar === "function") {
+      renderDevUserBar("devUserBar");
+    } else {
+      document.getElementById("devUserBar").innerHTML = `
+        Acting as: Employer #${employerId} — ABC Technologies
+        <span style="opacity:0.75">(login stand-in for Sprint 1)</span>
+      `;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const applicantId = params.get("id");
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    const STAGES = ["Applied", "Screening", "Interview", "Offered", "Rejected"];
+
+    function stageOptionsHtml(currentStatus) {
+      return STAGES.map(stage =>
+        `<option value="${stage}" ${stage === currentStatus ? "selected" : ""}>${stage}</option>`
+      ).join("");
+    }
+
+    function timelineHtml(currentStatus) {
+      const currentIndex = STAGES.indexOf(currentStatus);
+      return STAGES.map((stage, i) => `
+        <div class="stage-step ${i <= currentIndex ? "active" : ""}">
+          <div class="stage-circle">${i + 1}</div>
+          <div class="stage-label">${stage}</div>
+        </div>
+      `).join("");
+    }
+
+    function applicantHtml(applicant) {
+      const skillsHtml = (applicant.skills || [])
+        .map(skill => `<span class="skill-tag">${escapeHtml(skill)}</span>`)
+        .join("");
+
+      return `
+        <div class="stage-box">
+          <h2>${escapeHtml(applicant.seeker)}</h2>
+          <div class="application-meta">Applying for: <strong>${escapeHtml(applicant.job_title)}</strong></div>
+          <br>
+          <p>Email: ${escapeHtml(applicant.email)}</p>
+          <p>Skills: ${skillsHtml}</p>
+
+          <h3 style="margin-top:20px;">Cover Letter</h3>
+          <p style="font-style:italic; background:#f9f9f9; padding:12px; border-left:3px solid #ccc;">
+            "${escapeHtml(applicant.cover_letter)}"
+          </p>
+
+          <h3 style="margin-top:25px;">Recruitment Progress</h3>
+          <div class="stage-timeline">${timelineHtml(applicant.status)}</div>
+
+          <div style="margin-top:25px;">
+            <h3>Update Recruitment Stage</h3>
+            <select id="stageSelect" class="stage-select">${stageOptionsHtml(applicant.status)}</select>
+
+            <br><br>
+
+            <h3>Employer Notes</h3>
+            <textarea id="notesBox" class="notes-box" placeholder="Add comments about this applicant...">${escapeHtml(applicant.notes)}</textarea>
+
+            <br><br>
+
+            <button id="saveBtn" class="btn btn-primary">Save Changes</button>
+            <p id="saveStatus" class="status-msg" style="margin-top:10px;"></p>
+          </div>
+        </div>
+      `;
+    }
+
+    async function loadApplicant() {
+      const container = document.getElementById("applicantContainer");
+
+      if (!applicantId) {
+        container.innerHTML = `<p class="status-msg error">No applicant ID was given in the URL.</p>`;
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/employer/applicant/${applicantId}`);
+        if (!response.ok) throw new Error("Failed to pull database entries");
+        const applicant = await response.json();
+
+        container.innerHTML = applicantHtml(applicant);
+
+        document.getElementById("saveBtn").addEventListener("click", () => saveStage(applicant.id));
+      } catch (err) {
+        console.error(err);
+        container.innerHTML = `
+          <p class="status-msg error">
+            Couldn't load applicant: ${escapeHtml(err.message)}. Is the FastAPI server running?
+          </p>
+        `;
+      }
+    }
+
+    async function saveStage(id) {
+      const statusEl = document.getElementById("saveStatus");
+      const stage = document.getElementById("stageSelect").value;
+      const notes = document.getElementById("notesBox").value;
+
+      statusEl.textContent = "Saving...";
+      statusEl.classList.remove("error");
+
+      try {
+        const response = await fetch(`/api/employer/applicant/${id}/update`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stage, notes }),
+        });
+        if (!response.ok) throw new Error("Failed to save changes");
+
+        statusEl.textContent = "Recruitment stage updated successfully!";
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = `Couldn't save changes: ${err.message}`;
+        statusEl.classList.add("error");
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", loadApplicant);
+  </script>
+</body>
+</html>

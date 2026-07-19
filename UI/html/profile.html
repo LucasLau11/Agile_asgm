@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Profile</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+  <div class="brand">Job Portal</div>
+  <div class="topbar-right">
+    <nav>
+      <a href="/UI/html/browse_job.html">Browse Jobs</a>
+      <a href="/UI/html/my_application.html">My Applications</a>
+      <a href="/UI/html/notifications.html">Notifications</a>
+      <a href="/UI/html/profile.html">Profile</a>
+    </nav>
+    <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
+  </div>
+</header>
+  <div class="dev-user-bar" id="devUserBar"></div>
+
+  <main class="page">
+    <h1>My profile</h1>
+    <p class="subtitle">Keep your details up to date so employers get an accurate picture of you.</p>
+
+    <!-- Personal info -->
+    <section class="profile-section">
+      <div class="section-header-row">
+        <h2>Personal info</h2>
+        <button type="button" class="btn-link" id="editInfoBtn">Edit</button>
+      </div>
+      <div id="infoDisplay"></div>
+      <form id="infoForm" style="display:none;" novalidate>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="fullNameInput">Full name *</label>
+            <input type="text" id="fullNameInput" placeholder="e.g. Aisha Rahman" required />
+            <div class="field-error" id="fullNameError"></div>
+          </div>
+          <div class="form-field">
+            <label for="emailInput">Email *</label>
+            <input type="email" id="emailInput" placeholder="e.g. aisha@example.com" required />
+            <div class="field-error" id="emailError"></div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="phoneInput">Phone *</label>
+            <input type="text" id="phoneInput" placeholder="e.g. 012-345 6789" required />
+            <div class="field-error" id="phoneError"></div>
+          </div>
+        </div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="bioInput">Bio / summary</label>
+          <textarea id="bioInput" rows="3" placeholder="A short summary about yourself…"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" class="btn btn-secondary" id="cancelInfoBtn">Cancel</button>
+      </form>
+      <p class="status-msg" id="infoStatus"></p>
+    </section>
+
+    <!-- Skills -->
+    <section class="profile-section">
+      <h2>Skills</h2>
+      <div class="skills-editor" id="skillsEditor"></div>
+      <form id="addSkillForm" style="display:flex; gap:8px;">
+        <input type="text" id="newSkillInput" placeholder="Add a skill (e.g. 'Python')"
+               style="flex:1; padding:9px 12px; border:1px solid var(--line); border-radius:8px;" />
+        <button type="submit" class="btn btn-secondary">Add</button>
+      </form>
+      <p class="status-msg" id="skillsStatus"></p>
+    </section>
+
+    <!-- Work experience -->
+    <section class="profile-section">
+      <div class="section-header-row">
+        <h2>Work experience</h2>
+        <button type="button" class="btn-link" id="addExperienceBtn">+ Add</button>
+      </div>
+      <div id="experienceList"></div>
+      <form id="experienceForm" class="entry-form" style="display:none;" novalidate>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="expTitleInput">Job title</label>
+            <input type="text" id="expTitleInput" required />
+          </div>
+          <div class="form-field">
+            <label for="expCompanyInput">Company</label>
+            <input type="text" id="expCompanyInput" required />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Start date</label>
+            <div class="date-select-row">
+              <select id="expStartMonth"></select>
+              <select id="expStartYear"></select>
+            </div>
+          </div>
+          <div class="form-field">
+            <label>End date</label>
+            <div class="date-select-row">
+              <select id="expEndMonth"></select>
+              <select id="expEndYear"></select>
+            </div>
+            <label class="field-checkbox-row">
+              <input type="checkbox" id="expCurrentCheckbox" />
+              I currently work here
+            </label>
+          </div>
+        </div>
+        <div class="field-error" id="expDateError"></div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="expDescInput">Description</label>
+          <textarea id="expDescInput" rows="2"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Add experience</button>
+        <button type="button" class="btn btn-secondary" id="cancelExperienceBtn">Cancel</button>
+      </form>
+    </section>
+
+    <!-- Education -->
+    <section class="profile-section">
+      <div class="section-header-row">
+        <h2>Education</h2>
+        <button type="button" class="btn-link" id="addEducationBtn">+ Add</button>
+      </div>
+      <div id="educationList"></div>
+      <form id="educationForm" class="entry-form" style="display:none;" novalidate>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="eduInstitutionInput">Institution</label>
+            <input type="text" id="eduInstitutionInput" required />
+          </div>
+          <div class="form-field">
+            <label for="eduDegreeInput">Education level</label>
+            <select id="eduDegreeInput"></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="eduFieldInput">Field of study</label>
+            <select id="eduFieldInput"></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Start year</label>
+            <select id="eduStartYear"></select>
+          </div>
+          <div class="form-field">
+            <label>End year</label>
+            <select id="eduEndYear"></select>
+            <label class="field-checkbox-row">
+              <input type="checkbox" id="eduCurrentCheckbox" />
+              I'm currently studying here
+            </label>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Add education</button>
+        <button type="button" class="btn btn-secondary" id="cancelEducationBtn">Cancel</button>
+      </form>
+    </section>
+
+    <!-- Resume -->
+    <section class="profile-section">
+      <h2>Resume</h2>
+      <label class="resume-drop" for="resumeInput" style="display:block; cursor:pointer;">
+        Click to choose a PDF or DOCX file (max 5&nbsp;MB)
+      </label>
+      <input type="file" id="resumeInput" accept=".pdf,.docx" style="display:none" />
+      <p class="status-msg" id="resumeStatus"></p>
+      <div id="resumeCurrent"></div>
+      <div id="scanResumeContainer"></div>
+    </section>
+  <div id="applicationsTrackerContainer"></div>
+  </main>
+
+
+  <!-- PDF preview modal -->
+  <div id="previewOverlay" class="preview-overlay" style="display:none;">
+    <div class="preview-modal">
+      <div class="preview-modal-header">
+        <span id="previewFilename"></span>
+        <button type="button" id="previewCloseBtn" class="preview-close" title="Close preview">&times;</button>
+      </div>
+      <iframe id="previewFrame" class="preview-iframe" title="Resume preview"></iframe>
+    </div>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script>
+    renderDevUserBar("devUserBar");
+    const seekerId = getCurrentSeekerId();
+
+    let profileData = null; // holds the full profile response between renders
+
+    // ============================ Personal info ============================
+
+    function renderInfoDisplay() {
+      const el = document.getElementById("infoDisplay");
+      const hasInfo = profileData.full_name || profileData.email || profileData.phone || profileData.bio;
+      if (!hasInfo) {
+        el.innerHTML = `<p class="subtitle" style="font-size:0.88rem;">No personal info added yet. Click "Edit" to add your name and contact details.</p>`;
+        return;
+      }
+      el.innerHTML = `
+        ${profileData.full_name ? `<div class="info-name">${escapeHtml(profileData.full_name)}</div>` : ""}
+        <div class="info-contact">
+          ${profileData.email ? `<span>${escapeHtml(profileData.email)}</span>` : ""}
+          ${profileData.phone ? `<span>${escapeHtml(profileData.phone)}</span>` : ""}
+        </div>
+        ${profileData.bio ? `<p class="info-bio">${escapeHtml(profileData.bio)}</p>` : ""}
+      `;
+    }
+
+    document.getElementById("editInfoBtn").addEventListener("click", () => {
+      document.getElementById("fullNameInput").value = profileData.full_name || "";
+      document.getElementById("emailInput").value = profileData.email || "";
+      document.getElementById("phoneInput").value = profileData.phone || "";
+      document.getElementById("bioInput").value = profileData.bio || "";
+      document.getElementById("fullNameError").textContent = "";
+      document.getElementById("emailError").textContent = "";
+      document.getElementById("phoneError").textContent = "";
+      document.getElementById("infoDisplay").style.display = "none";
+      document.getElementById("infoForm").style.display = "block";
+      document.getElementById("editInfoBtn").style.display = "none";
+    });
+
+    document.getElementById("cancelInfoBtn").addEventListener("click", () => {
+      document.getElementById("infoForm").style.display = "none";
+      document.getElementById("infoDisplay").style.display = "block";
+      document.getElementById("editInfoBtn").style.display = "inline";
+    });
+
+    // Mirrors the backend validators in schemas.py — gives instant feedback
+    // instead of waiting on a round trip, but the backend is still the
+    // final authority (never trust client-side validation alone).
+    const NAME_PATTERN = /^[A-Za-z][A-Za-z.'\-\s]*$/;
+    const PHONE_PATTERN = /^\+?[0-9][0-9\-\s()]*$/;
+
+    function validateInfoForm() {
+      let valid = true;
+      const nameEl = document.getElementById("fullNameInput");
+      const emailEl = document.getElementById("emailInput");
+      const phoneEl = document.getElementById("phoneInput");
+      const nameError = document.getElementById("fullNameError");
+      const emailError = document.getElementById("emailError");
+      const phoneError = document.getElementById("phoneError");
+      nameError.textContent = "";
+      emailError.textContent = "";
+      phoneError.textContent = "";
+
+      const name = nameEl.value.trim();
+      if (!name) {
+        nameError.textContent = "Name is required.";
+        valid = false;
+      } else if (/\d/.test(name)) {
+        nameError.textContent = "Name cannot contain numbers.";
+        valid = false;
+      } else if (!NAME_PATTERN.test(name)) {
+        nameError.textContent = "Name can only contain letters, spaces, apostrophes, and hyphens.";
+        valid = false;
+      }
+
+      const email = emailEl.value.trim();
+      if (!email) {
+        emailError.textContent = "Email is required.";
+        valid = false;
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        emailError.textContent = "Enter a valid email address.";
+        valid = false;
+      }
+
+      const phone = phoneEl.value.trim();
+      const phoneDigitCount = (phone.match(/\d/g) || []).length;
+      if (!phone) {
+        phoneError.textContent = "Phone number is required.";
+        valid = false;
+      } else if (!PHONE_PATTERN.test(phone)) {
+        phoneError.textContent = "Phone number can only contain digits, spaces, dashes, and parentheses.";
+        valid = false;
+      } else if (phoneDigitCount < 7) {
+        phoneError.textContent = "Phone number must have at least 7 digits.";
+        valid = false;
+      }
+
+      return valid;
+    }
+
+    document.getElementById("infoForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const statusEl = document.getElementById("infoStatus");
+      statusEl.textContent = "";
+      if (!validateInfoForm()) return;
+      try {
+        profileData = await updateProfileInfo(seekerId, {
+          full_name: document.getElementById("fullNameInput").value.trim(),
+          email: document.getElementById("emailInput").value.trim(),
+          phone: document.getElementById("phoneInput").value.trim(),
+          bio: document.getElementById("bioInput").value.trim(),
+        });
+        renderInfoDisplay();
+        document.getElementById("infoForm").style.display = "none";
+        document.getElementById("infoDisplay").style.display = "block";
+        document.getElementById("editInfoBtn").style.display = "inline";
+        statusEl.textContent = "Saved.";
+        statusEl.className = "status-msg success";
+      } catch (err) {
+        statusEl.textContent = `Couldn't save: ${err.message}`;
+        statusEl.className = "status-msg error";
+      }
+    });
+
+    // ================================ Skills ================================
+
+    function renderSkills() {
+      const editor = document.getElementById("skillsEditor");
+      if (profileData.skills.length === 0) {
+        editor.innerHTML = `<span class="subtitle" style="font-size:0.88rem">No skills added yet.</span>`;
+        return;
+      }
+      editor.innerHTML = profileData.skills
+        .map(
+          (skill, i) => `
+        <span class="skill-chip">
+          ${escapeHtml(skill)}
+          <button type="button" data-index="${i}" title="Remove skill">&times;</button>
+        </span>`
+        )
+        .join("");
+
+      editor.querySelectorAll("button[data-index]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const skills = [...profileData.skills];
+          skills.splice(Number(btn.dataset.index), 1);
+          saveSkills(skills);
+        });
+      });
+    }
+
+    async function saveSkills(skills) {
+      const statusEl = document.getElementById("skillsStatus");
+      try {
+        profileData = await updateSeekerSkills(seekerId, skills);
+        renderSkills();
+        statusEl.textContent = "Skills saved.";
+        statusEl.className = "status-msg success";
+      } catch (err) {
+        statusEl.textContent = `Couldn't save skills: ${err.message}`;
+        statusEl.className = "status-msg error";
+      }
+    }
+
+    document.getElementById("addSkillForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const input = document.getElementById("newSkillInput");
+      const value = input.value.trim();
+      if (value && !profileData.skills.includes(value)) {
+        input.value = "";
+        saveSkills([...profileData.skills, value]);
+      }
+    });
+
+    // ============================ Work experience ============================
+
+    function renderExperience() {
+      const listEl = document.getElementById("experienceList");
+      if (profileData.experience.length === 0) {
+        listEl.innerHTML = `<p class="subtitle" style="font-size:0.88rem;">No work experience added yet.</p>`;
+        return;
+      }
+      listEl.innerHTML = profileData.experience
+        .map(
+          (exp) => `
+        <div class="entry-card">
+          <div class="entry-card-header">
+            <div>
+              <div class="entry-title">${escapeHtml(exp.job_title)}</div>
+              <div class="entry-subtitle">${escapeHtml(exp.company_name)} &nbsp;•&nbsp; ${escapeHtml(exp.start_date || "")} – ${escapeHtml(exp.end_date || "Present")}</div>
+            </div>
+            <button type="button" class="entry-delete" data-id="${exp.id}" title="Remove">&times;</button>
+          </div>
+          ${exp.description ? `<p class="entry-desc">${escapeHtml(exp.description)}</p>` : ""}
+        </div>`
+        )
+        .join("");
+
+      listEl.querySelectorAll(".entry-delete").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          profileData = await deleteExperience(seekerId, btn.dataset.id);
+          renderExperience();
+        });
+      });
+    }
+
+    function populateExperienceDateSelects() {
+      document.getElementById("expStartMonth").innerHTML = monthOptionsHtml();
+      document.getElementById("expStartYear").innerHTML = yearOptionsHtml();
+      document.getElementById("expEndMonth").innerHTML = monthOptionsHtml();
+      document.getElementById("expEndYear").innerHTML = yearOptionsHtml();
+    }
+
+    document.getElementById("expCurrentCheckbox").addEventListener("change", (e) => {
+      const disabled = e.target.checked;
+      document.getElementById("expEndMonth").disabled = disabled;
+      document.getElementById("expEndYear").disabled = disabled;
+      if (disabled) {
+        document.getElementById("expEndMonth").value = "";
+        document.getElementById("expEndYear").value = "";
+      }
+    });
+
+    document.getElementById("addExperienceBtn").addEventListener("click", () => {
+      populateExperienceDateSelects();
+      document.getElementById("experienceForm").style.display = "block";
+    });
+    document.getElementById("cancelExperienceBtn").addEventListener("click", () => {
+      document.getElementById("experienceForm").style.display = "none";
+    });
+
+    document.getElementById("experienceForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById("expDateError");
+      errorEl.textContent = "";
+
+      const startMonth = document.getElementById("expStartMonth").value;
+      const startYear = document.getElementById("expStartYear").value;
+      const endMonth = document.getElementById("expEndMonth").value;
+      const endYear = document.getElementById("expEndYear").value;
+      const isCurrent = document.getElementById("expCurrentCheckbox").checked;
+
+      // A month picked without a year (or vice versa) is an incomplete date —
+      // catch it here instead of silently dropping half of it.
+      if ((startMonth && !startYear) || (!startMonth && startYear)) {
+        errorEl.textContent = "Please select both a month and a year for the start date.";
+        return;
+      }
+      if (!isCurrent && ((endMonth && !endYear) || (!endMonth && endYear))) {
+        errorEl.textContent = "Please select both a month and a year for the end date.";
+        return;
+      }
+
+      profileData = await addExperience(seekerId, {
+        job_title: document.getElementById("expTitleInput").value.trim(),
+        company_name: document.getElementById("expCompanyInput").value.trim(),
+        start_date: combineDateSelects(startMonth, startYear),
+        end_date: isCurrent ? "" : combineDateSelects(endMonth, endYear),
+        description: document.getElementById("expDescInput").value.trim(),
+      });
+      renderExperience();
+      e.target.reset();
+      document.getElementById("expEndMonth").disabled = false;
+      document.getElementById("expEndYear").disabled = false;
+      document.getElementById("experienceForm").style.display = "none";
+    });
+
+    // ================================ Education ================================
+
+    function renderEducation() {
+      const listEl = document.getElementById("educationList");
+      if (profileData.education.length === 0) {
+        listEl.innerHTML = `<p class="subtitle" style="font-size:0.88rem;">No education added yet.</p>`;
+        return;
+      }
+      listEl.innerHTML = profileData.education
+        .map(
+          (edu) => `
+        <div class="entry-card">
+          <div class="entry-card-header">
+            <div>
+              <div class="entry-title">${escapeHtml(edu.institution)}</div>
+              <div class="entry-subtitle">
+                ${escapeHtml([edu.degree, edu.field_of_study].filter(Boolean).join(", "))}
+                &nbsp;•&nbsp; ${escapeHtml(edu.start_date || "")} – ${escapeHtml(edu.end_date || "Present")}
+              </div>
+            </div>
+            <button type="button" class="entry-delete" data-id="${edu.id}" title="Remove">&times;</button>
+          </div>
+        </div>`
+        )
+        .join("");
+
+      listEl.querySelectorAll(".entry-delete").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          profileData = await deleteEducation(seekerId, btn.dataset.id);
+          renderEducation();
+        });
+      });
+    }
+
+    function populateEducationSelects() {
+      document.getElementById("eduDegreeInput").innerHTML =
+        dropdownOptionsHtml(EDUCATION_LEVELS, "", "Select education level…");
+      document.getElementById("eduFieldInput").innerHTML =
+        dropdownOptionsHtml(FIELDS_OF_STUDY, "", "Select field of study…");
+      document.getElementById("eduStartYear").innerHTML = yearOptionsHtml();
+      document.getElementById("eduEndYear").innerHTML = yearOptionsHtml();
+    }
+
+    document.getElementById("eduCurrentCheckbox").addEventListener("change", (e) => {
+      const disabled = e.target.checked;
+      document.getElementById("eduEndYear").disabled = disabled;
+      if (disabled) document.getElementById("eduEndYear").value = "";
+    });
+
+    document.getElementById("addEducationBtn").addEventListener("click", () => {
+      populateEducationSelects();
+      document.getElementById("educationForm").style.display = "block";
+    });
+    document.getElementById("cancelEducationBtn").addEventListener("click", () => {
+      document.getElementById("educationForm").style.display = "none";
+    });
+
+    document.getElementById("educationForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const isCurrent = document.getElementById("eduCurrentCheckbox").checked;
+      profileData = await addEducation(seekerId, {
+        institution: document.getElementById("eduInstitutionInput").value.trim(),
+        degree: document.getElementById("eduDegreeInput").value,
+        field_of_study: document.getElementById("eduFieldInput").value,
+        start_date: document.getElementById("eduStartYear").value,
+        end_date: isCurrent ? "" : document.getElementById("eduEndYear").value,
+      });
+      renderEducation();
+      e.target.reset();
+      document.getElementById("eduEndYear").disabled = false;
+      document.getElementById("educationForm").style.display = "none";
+    });
+
+    // ================================= Resume =================================
+
+    function renderResumeCurrent() {
+      const el = document.getElementById("resumeCurrent");
+      if (!profileData.resume_filename) {
+        el.innerHTML = `<p class="subtitle" style="font-size:0.88rem; margin-top:12px;">No resume uploaded yet.</p>`;
+        return;
+      }
+
+      const filename = profileData.resume_filename;
+      const extension = (filename.split(".").pop() || "").toUpperCase();
+      const typeLabel = extension === "PDF" ? "PDF" : extension === "DOC" || extension === "DOCX" ? "DOC" : extension;
+      const isPdf = extension === "PDF";
+      const actionHint = isPdf ? "Click to preview" : "Click to download";
+
+      el.innerHTML = `
+        <div class="file-card-v2" id="fileCard" role="button" tabindex="0" title="${actionHint}">
+          <div class="file-thumb">
+            <div class="line" style="top:8px;"></div>
+            <div class="line short" style="top:14px;"></div>
+            <div class="line" style="top:20px;"></div>
+            <div class="line short" style="top:26px;"></div>
+            <div class="line accent" style="top:36px;"></div>
+            <div class="line accent short" style="top:42px;"></div>
+            <div class="line accent" style="top:48px; right:18px;"></div>
+            <div class="badge">${escapeHtml(typeLabel)}</div>
+          </div>
+          <div class="file-info">
+            <div class="file-name">${escapeHtml(filename)}</div>
+            <div class="file-type-meta">${escapeHtml(typeLabel)} &nbsp;&bull;&nbsp; ${actionHint}</div>
+          </div>
+          <div class="file-check-badge" title="Stored in the database">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+              <path d="M20 6 9 17l-5-5"/>
+            </svg>
+          </div>
+        </div>`;
+
+      const cardEl = document.getElementById("fileCard");
+      cardEl.addEventListener("click", () => {
+        if (isPdf) {
+          openPreview(profileData.resume_url, filename);
+        } else {
+          window.open(profileData.resume_url, "_blank");
+        }
+      });
+      cardEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") cardEl.click();
+      });
+
+      renderScanButton();
+    }
+
+    // ---------- Resume scanning (NLP-lite auto-fill suggestions) ----------
+
+    function renderScanButton() {
+      const container = document.getElementById("scanResumeContainer");
+      container.innerHTML = `
+        <button type="button" class="btn btn-secondary" id="scanResumeBtn" style="margin-top:12px;">
+          Scan resume for profile suggestions
+        </button>
+        <div id="scanResultsPanel"></div>
+      `;
+      document.getElementById("scanResumeBtn").addEventListener("click", runResumeScan);
+    }
+
+    async function runResumeScan() {
+      const panel = document.getElementById("scanResultsPanel");
+      panel.innerHTML = `<p class="status-msg" style="margin-top:10px;">Scanning your resume…</p>`;
+      try {
+        const suggestions = await scanResume(seekerId);
+
+        if (!suggestions.text_extracted) {
+          panel.innerHTML = `
+            <p class="status-msg error" style="margin-top:10px;">
+              Couldn't read any text from this file — it might be a scanned image
+              rather than a real text document, or an older .doc file (limited support).
+              Try a text-based PDF or .docx instead.
+            </p>`;
+          return;
+        }
+
+        const hasAnything = suggestions.full_name || suggestions.email || suggestions.phone || suggestions.bio
+          || suggestions.skills.length > 0 || suggestions.experience.length > 0 || suggestions.education.length > 0;
+        if (!hasAnything) {
+          panel.innerHTML = `<p class="status-msg" style="margin-top:10px;">No recognizable info found in this resume.</p>`;
+          return;
+        }
+
+        // New skills found in the resume that aren't already saved on the profile.
+        const newSkills = suggestions.skills.filter((s) => !profileData.skills.includes(s));
+
+        const experienceRows = suggestions.experience
+          .map((exp, i) => `
+            <label class="scan-result-row">
+              <input type="checkbox" data-field="experience" data-index="${i}" checked />
+              <span>${escapeHtml(exp.job_title || "(title not detected)")}${exp.company_name ? `, ${escapeHtml(exp.company_name)}` : ""}
+                ${exp.start_date ? ` — ${escapeHtml(exp.start_date)} to ${escapeHtml(exp.end_date || "Present")}` : ""}</span>
+            </label>`)
+          .join("");
+
+        const educationRows = suggestions.education
+          .map((edu, i) => `
+            <label class="scan-result-row">
+              <input type="checkbox" data-field="education" data-index="${i}" checked />
+              <span>${escapeHtml(edu.institution || "(institution not detected)")}${edu.degree ? ` — ${escapeHtml(edu.degree)}` : ""}
+                ${edu.field_of_study ? ` in ${escapeHtml(edu.field_of_study)}` : ""}</span>
+            </label>`)
+          .join("");
+
+        panel.innerHTML = `
+          <div class="scan-results-card">
+            <div class="scan-results-title">We found this in your resume — review before applying:</div>
+            ${suggestions.full_name ? `
+              <label class="scan-result-row">
+                <input type="checkbox" data-field="full_name" checked />
+                <span>Name: <strong>${escapeHtml(suggestions.full_name)}</strong></span>
+              </label>` : ""}
+            ${suggestions.email ? `
+              <label class="scan-result-row">
+                <input type="checkbox" data-field="email" checked />
+                <span>Email: <strong>${escapeHtml(suggestions.email)}</strong></span>
+              </label>` : ""}
+            ${suggestions.phone ? `
+              <label class="scan-result-row">
+                <input type="checkbox" data-field="phone" checked />
+                <span>Phone: <strong>${escapeHtml(suggestions.phone)}</strong></span>
+              </label>` : ""}
+            ${suggestions.bio ? `
+              <label class="scan-result-row">
+                <input type="checkbox" data-field="bio" checked />
+                <span>Bio: <strong>${escapeHtml(suggestions.bio)}</strong></span>
+              </label>` : ""}
+            ${newSkills.length > 0 ? `
+              <label class="scan-result-row">
+                <input type="checkbox" data-field="skills" checked />
+                <span>Skills: <strong>${newSkills.map(escapeHtml).join(", ")}</strong></span>
+              </label>` : ""}
+            ${suggestions.experience.length > 0 ? `
+              <div class="scan-subsection-title">Work experience</div>
+              ${experienceRows}` : ""}
+            ${suggestions.education.length > 0 ? `
+              <div class="scan-subsection-title">Education</div>
+              ${educationRows}` : ""}
+            <button type="button" class="btn btn-primary" id="applyScanBtn" style="margin-top:10px;">
+              Apply selected to profile
+            </button>
+            <p class="status-msg" id="applyScanStatus"></p>
+          </div>
+        `;
+
+        document.getElementById("applyScanBtn").addEventListener("click", async () => {
+          const statusEl = document.getElementById("applyScanStatus");
+          const checked = (field) => panel.querySelector(`input[data-field="${field}"]`)?.checked;
+
+          try {
+            // Personal info fields (name/email/phone) go through one PUT,
+            // merged with whatever's already on the profile so we don't
+            // wipe out fields the user already filled in themselves.
+            if (checked("full_name") || checked("email") || checked("phone") || checked("bio")) {
+              const mergedName = checked("full_name") ? suggestions.full_name : profileData.full_name;
+              const mergedEmail = checked("email") ? suggestions.email : profileData.email;
+              const mergedPhone = checked("phone") ? suggestions.phone : profileData.phone;
+
+              // Name/email/phone are required together on the profile. If the
+              // resume didn't detect one of them AND it's not already saved,
+              // applying would fail — tell the user what's missing instead
+              // of letting the save attempt fail with a generic error.
+              const missing = [];
+              if (!mergedName) missing.push("full name");
+              if (!mergedEmail) missing.push("email");
+              if (!mergedPhone) missing.push("phone number");
+              if (missing.length > 0) {
+                statusEl.textContent = `Can't save yet — your profile is still missing a ${missing.join(" and ")}. Add it in "Personal info" above, then try applying again.`;
+                statusEl.className = "status-msg error";
+                return;
+              }
+
+              profileData = await updateProfileInfo(seekerId, {
+                full_name: mergedName,
+                email: mergedEmail,
+                phone: mergedPhone,
+                bio: checked("bio") ? suggestions.bio : profileData.bio,
+              });
+              renderInfoDisplay();
+            }
+
+            if (checked("skills") && newSkills.length > 0) {
+              profileData = await updateSeekerSkills(seekerId, [...profileData.skills, ...newSkills]);
+              renderSkills();
+            }
+
+            // Each checked experience/education row gets added as its own
+            // entry via the normal add endpoints (same as the manual "+ Add"
+            // forms use) — this reuses the exact same validated code path.
+            const checkedExperienceIndexes = [...panel.querySelectorAll('input[data-field="experience"]:checked')]
+              .map((el) => Number(el.dataset.index));
+            for (const i of checkedExperienceIndexes) {
+              const exp = suggestions.experience[i];
+              profileData = await addExperience(seekerId, {
+                job_title: exp.job_title || "Untitled role",
+                company_name: exp.company_name || "Unknown company",
+                start_date: exp.start_date,
+                end_date: exp.end_date,
+                description: exp.description,
+              });
+            }
+            if (checkedExperienceIndexes.length > 0) renderExperience();
+
+            const checkedEducationIndexes = [...panel.querySelectorAll('input[data-field="education"]:checked')]
+              .map((el) => Number(el.dataset.index));
+            for (const i of checkedEducationIndexes) {
+              const edu = suggestions.education[i];
+              profileData = await addEducation(seekerId, {
+                institution: edu.institution || "Unknown institution",
+                degree: edu.degree,
+                field_of_study: edu.field_of_study,
+                start_date: edu.start_date,
+                end_date: edu.end_date,
+              });
+            }
+            if (checkedEducationIndexes.length > 0) renderEducation();
+
+            statusEl.textContent = "Applied to your profile.";
+            statusEl.className = "status-msg success";
+          } catch (err) {
+            statusEl.textContent = `Couldn't apply suggestions: ${err.message}`;
+            statusEl.className = "status-msg error";
+          }
+        });
+      } catch (err) {
+        panel.innerHTML = `<p class="status-msg error" style="margin-top:10px;">Scan failed: ${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    function openPreview(url, filename) {
+      document.getElementById("previewFilename").textContent = filename;
+      document.getElementById("previewFrame").src = url;
+      document.getElementById("previewOverlay").style.display = "flex";
+    }
+    function closePreview() {
+      document.getElementById("previewOverlay").style.display = "none";
+      document.getElementById("previewFrame").src = "";
+    }
+    document.getElementById("previewCloseBtn").addEventListener("click", closePreview);
+    document.getElementById("previewOverlay").addEventListener("click", (e) => {
+      if (e.target.id === "previewOverlay") closePreview();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closePreview();
+    });
+
+    document.getElementById("resumeInput").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const statusEl = document.getElementById("resumeStatus");
+
+      // Quick client-side check for instant feedback. This is just UX —
+      // the backend still verifies the actual file content (magic bytes)
+      // before accepting it, since a renamed extension can't be trusted.
+      const lowerName = file.name.toLowerCase();
+      if (!lowerName.endsWith(".pdf") && !lowerName.endsWith(".docx")) {
+        statusEl.textContent = "Upload failed: only PDF or DOCX files are accepted.";
+        statusEl.className = "status-msg error";
+        e.target.value = ""; // reset the picker so the same invalid file can be reselected after fixing
+        return;
+      }
+
+      statusEl.textContent = "Uploading…";
+      statusEl.className = "status-msg";
+      try {
+        profileData = await uploadResume(seekerId, file);
+        renderResumeCurrent();
+        statusEl.textContent = "Resume uploaded.";
+        statusEl.className = "status-msg success";
+      } catch (err) {
+        statusEl.textContent = `Upload failed: ${err.message}`;
+        statusEl.className = "status-msg error";
+      }
+    });
+
+    // ============================ Initial load ============================
+
+    async function loadProfile() {
+      try {
+        profileData = await fetchSeekerProfile(seekerId);
+        renderInfoDisplay();
+        renderSkills();
+        renderExperience();
+        renderEducation();
+        renderResumeCurrent();
+      } catch (err) {
+        document.getElementById("skillsStatus").textContent = `Couldn't load profile: ${err.message}`;
+        document.getElementById("skillsStatus").className = "status-msg error";
+      }
+    }
+    async function injectApplicationsTracker() {
+      try {
+        const response = await fetch(`/my-applications-fragment?seeker_id=${seekerId}`);
+        if (response.ok) {
+          document.getElementById('applicationsTrackerContainer').innerHTML = await response.text();
+        }
+      } catch (err) {
+        console.error("Unable to cross-mount structural applications table log:", err);
+      }
+    }
+    // Fire injection on load lifecycle hooks
+    window.addEventListener('DOMContentLoaded', injectApplicationsTracker);
+    loadProfile();
+  </script>
+</body>
+</html>
