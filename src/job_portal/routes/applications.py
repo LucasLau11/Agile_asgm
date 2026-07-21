@@ -203,6 +203,7 @@ async def api_applicant_detail(application_id: int, db: Session = Depends(get_db
 
     return JSONResponse(content={
         "id": app.id,
+        "seeker_id": app.seeker_id,
         "seeker": app.seeker_name,
         "email": app.email,
         "job_title": app.job.title if app.job else app.job_title,
@@ -285,11 +286,29 @@ async def api_update_applicant_stage(
 
 
 @router.get("/api/notifications")
-async def api_get_notifications(seeker_id: int = Query(1), db: Session = Depends(get_db)):
-    """Consumed by notifications.html."""
+async def api_get_notifications(
+    seeker_id: Optional[int] = Query(None),
+    role: str = Query("seeker", pattern="^(seeker|employer)$"),
+    user_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Consumed by notifications.html (both the seeker and employer variants).
+
+    Kept backwards compatible with the original seeker-only call shape
+    (?seeker_id=1) while adding role/user_id so employers can fetch their
+    own notifications too (needed once messaging notifies employers, not
+    just seekers).
+    """
+    if role == "employer":
+        target_id = user_id if user_id is not None else 1
+        filter_clause = Notification.employer_id == target_id
+    else:
+        target_id = user_id if user_id is not None else (seeker_id if seeker_id is not None else 1)
+        filter_clause = Notification.seeker_id == target_id
+
     records = (
         db.query(Notification)
-        .filter(Notification.seeker_id == seeker_id)
+        .filter(filter_clause)
         .order_by(Notification.created_at.desc())
         .all()
     )

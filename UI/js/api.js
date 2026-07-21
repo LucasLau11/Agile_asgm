@@ -341,3 +341,47 @@ function escapeHtml(str) {
   div.textContent = str ?? "";
   return div.innerHTML;
 }
+
+// ---------------------------------------------------------------------------
+// Messaging (messages.html, plus "Message Employer" / "Message Seeker"
+// buttons on job_detail.html / applicant_detail.html). US-40 to US-43.
+// ---------------------------------------------------------------------------
+
+function fetchConversations(role, userId) {
+  return apiFetch(`/api/conversations?role=${role}&user_id=${userId}`);
+}
+
+function fetchConversationMessages(conversationId, role, userId) {
+  return apiFetch(`/api/conversations/${conversationId}/messages?role=${role}&user_id=${userId}`);
+}
+
+function sendMessage({ senderRole, senderId, recipientId, body, jobId = null }) {
+  const payload = { sender_role: senderRole, sender_id: senderId, recipient_id: recipientId, body };
+  if (jobId != null) payload.job_id = jobId;
+  return apiFetch(`/api/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Finds (or silently creates) the conversation with `otherId` and returns
+ * its id, without posting a message — used by the contextual "Message
+ * Employer" / "Message Seeker" buttons to jump straight into a thread. */
+function findOrCreateConversation(role, userId, otherId) {
+  const params = new URLSearchParams({ role, user_id: userId, other_id: otherId });
+  return apiFetch(`/api/conversations/find-or-create?${params.toString()}`, { method: "POST" });
+}
+
+/** Rough "x minutes/hours ago" formatting for message/conversation timestamps
+ * (client-side counterpart to the backend's _humanize() in applications.py). */
+function timeAgo(isoString) {
+  if (!isoString) return "";
+  const then = new Date(isoString.endsWith("Z") ? isoString : isoString + "Z");
+  const seconds = Math.floor((Date.now() - then.getTime()) / 1000);
+  if (seconds < 60) return "Just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  const days = Math.floor(seconds / 86400);
+  return days === 1 ? "Yesterday" : `${days}d ago`;
+}

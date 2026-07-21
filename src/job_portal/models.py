@@ -121,7 +121,14 @@ class Notification(Base):
     __tablename__ = "notifications"
  
     id = Column(Integer, primary_key=True, index=True)
-    seeker_id = Column(Integer, nullable=False, index=True, default=1)
+    # A notification belongs to exactly one recipient: a seeker OR an
+    # employer, never both. seeker_id stays nullable=True (was
+    # nullable=False/default=1) so employer-targeted rows can leave it
+    # NULL — every existing call site already sets seeker_id explicitly,
+    # so this is a widening change, not a behavior change for Sprint 1
+    # notifications.
+    seeker_id = Column(Integer, nullable=True, index=True)
+    employer_id = Column(Integer, nullable=True, index=True)
     application_id = Column(Integer, ForeignKey("applications.id"), nullable=True, index=True)
     title = Column(String(200), nullable=False, default="")
     message = Column(Text, nullable=False, default="")
@@ -129,3 +136,43 @@ class Notification(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
  
     application = relationship("Application")
+
+
+class Conversation(Base):
+    """One persistent thread per (seeker, employer) pair — WhatsApp/Telegram
+    style: there's a single ongoing conversation with a contact, not a new
+    thread per topic. A specific job can still be tagged onto individual
+    messages within the thread (see Message.job_id) without splitting the
+    conversation itself.
+    """
+
+    __tablename__ = "conversations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    seeker_id = Column(Integer, nullable=False, index=True)
+    employer_id = Column(Integer, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_message_at = Column(DateTime, default=datetime.utcnow)
+
+    messages = relationship(
+        "Message", back_populates="conversation", cascade="all, delete-orphan",
+        order_by="Message.created_at",
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False, index=True)
+    sender_role = Column(String(10), nullable=False)  # "seeker" | "employer"
+    sender_id = Column(Integer, nullable=False, index=True)
+    body = Column(Text, nullable=False, default="")
+    # Optional "regarding this job" tag on an individual message — not
+    # required, since US-40/41 allow general conversation too.
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True, index=True)
+    is_read = Column(Integer, nullable=False, default=0)  # 0 = unread, 1 = read
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    conversation = relationship("Conversation", back_populates="messages")
+    job = relationship("Job")

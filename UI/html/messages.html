@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Messages</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/messages.css" />
+</head>
+<body>
+
+  <header class="topbar" id="topbarHeader"></header>
+
+  <div class="dev-user-bar" id="devUserBar"></div>
+
+  <main class="page">
+    <h1>Messages</h1>
+    <p class="subtitle" id="pageSubtitle">Loading…</p>
+
+    <div class="messages-shell">
+      <section class="conversation-pane">
+        <div class="conversation-pane-header">
+          <h2>Chats</h2>
+          <button class="btn btn-secondary" id="newMessageBtn" type="button">+ New</button>
+        </div>
+        <div class="conversation-list" id="conversationList">
+          <p class="subtitle" style="padding:16px;">Loading conversations…</p>
+        </div>
+      </section>
+
+      <section class="chat-pane" id="chatPane">
+        <div class="empty-chat-state">Select a conversation, or start a new one.</div>
+      </section>
+    </div>
+  </main>
+
+  <div class="modal-overlay" id="newMessageModal" style="display:none;">
+    <div class="modal-box">
+      <h3>New Message</h3>
+      <label for="recipientSelect" style="display:block; font-weight:600; margin-bottom:6px;">To</label>
+      <select id="recipientSelect"></select>
+      <label for="newMessageBody" style="display:block; font-weight:600; margin-bottom:6px;">Message</label>
+      <textarea id="newMessageBody" rows="4" placeholder="Type your message…"></textarea>
+      <p class="status-msg error" id="newMessageError" style="display:none;"></p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="cancelNewMessage" type="button">Cancel</button>
+        <button class="btn btn-primary" id="sendNewMessage" type="button">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    // Which side of the conversation the current user is acting as. Defaults
+    // to seeker so a bare /UI/html/messages.html link still works.
+    const role = params.get("role") === "employer" ? "employer" : "seeker";
+    const otherRole = role === "seeker" ? "employer" : "seeker";
+    const userId = role === "employer" ? getCurrentEmployerId() : getCurrentSeekerId();
+
+    // Optional deep-link params from "Message Employer" / "Message Seeker"
+    // buttons on job_detail.html / applicant_detail.html.
+    const deepLinkOtherId = params.get("other") ? Number(params.get("other")) : null;
+    const deepLinkJobId = params.get("job") ? Number(params.get("job")) : null;
+
+    let conversations = [];
+    let activeConversationId = null;
+
+    function renderTopbar() {
+      const header = document.getElementById("topbarHeader");
+      if (role === "seeker") {
+        header.innerHTML = `
+          <div class="brand">Job Portal</div>
+          <div class="topbar-right">
+            <nav>
+              <a href="/UI/html/browse_job.html">Browse Jobs</a>
+              <a href="/UI/html/my_application.html">My Applications</a>
+              <a href="/UI/html/messages.html?role=seeker" class="active">Messages</a>
+              <a href="/UI/html/notifications.html">Notifications</a>
+              <a href="/UI/html/profile.html">Profile</a>
+            </nav>
+            <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
+          </div>`;
+      } else {
+        header.innerHTML = `
+          <div class="brand">Job Portal</div>
+          <div class="topbar-right">
+            <nav>
+              <a href="/UI/html/job_management.html">My Postings</a>
+              <a href="/UI/html/employer_applications.html">Applications</a>
+              <a href="/UI/html/messages.html?role=employer" class="active">Messages</a>
+              <a href="/UI/html/employer_notifications.html">Notifications</a>
+            </nav>
+            <a href="/UI/html/browse_job.html" class="role-switch">Job Seeker</a>
+          </div>`;
+      }
+    }
+
+    function renderDevBar() {
+      if (role === "seeker") {
+        renderDevUserBar("devUserBar");
+      } else {
+        renderDevEmployerBar("devUserBar");
+      }
+    }
+
+    function initialsFor(name) {
+      return (name || "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+    }
+
+    function renderConversationList() {
+      const list = document.getElementById("conversationList");
+      if (conversations.length === 0) {
+        list.innerHTML = `<p class="subtitle" style="padding:16px;">No conversations yet — start one with "+ New".</p>`;
+        return;
+      }
+      list.innerHTML = conversations.map((c) => `
+        <div class="conversation-item ${c.id === activeConversationId ? "active" : ""}" data-id="${c.id}">
+          <div class="conversation-avatar">${escapeHtml(initialsFor(c.other_party_name))}</div>
+          <div class="conversation-summary">
+            <div class="name">
+              <span>${escapeHtml(c.other_party_name)}</span>
+              <span class="time">${timeAgo(c.last_message_at)}</span>
+            </div>
+            <div class="preview">
+              ${escapeHtml(c.last_message_preview || "No messages yet")}
+              ${c.unread_count > 0 ? `<span class="unread-badge">${c.unread_count}</span>` : ""}
+            </div>
+          </div>
+        </div>
+      `).join("");
+
+      list.querySelectorAll(".conversation-item").forEach((el) => {
+        el.addEventListener("click", () => openConversation(Number(el.dataset.id)));
+      });
+    }
+
+    async function loadConversations() {
+      try {
+        conversations = await fetchConversations(role, userId);
+        document.getElementById("pageSubtitle").textContent =
+          role === "seeker" ? "Your conversations with employers." : "Your conversations with job seekers.";
+        renderConversationList();
+      } catch (err) {
+        document.getElementById("conversationList").innerHTML =
+          `<p class="status-msg error" style="padding:16px;">${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    function renderChat(threadData) {
+      const pane = document.getElementById("chatPane");
+      const bubbles = threadData.messages.map((m) => {
+        const mine = m.sender_role === role;
+        return `
+          <div class="bubble-row ${mine ? "mine" : ""}">
+            <div class="bubble">
+              ${m.job_title ? `<span class="job-tag">Re: ${escapeHtml(m.job_title)}</span>` : ""}
+              ${escapeHtml(m.body)}
+              <span class="time">${timeAgo(m.created_at)}</span>
+            </div>
+          </div>`;
+      }).join("");
+
+      pane.innerHTML = `
+        <div class="chat-pane-header">${escapeHtml(threadData.other_party_name)}</div>
+        <div class="chat-messages" id="chatMessages">${bubbles}</div>
+        <div class="chat-composer">
+          <textarea id="composerInput" placeholder="Type a message…"></textarea>
+          <button class="btn btn-primary" id="composerSend" type="button">Send</button>
+        </div>
+      `;
+
+      const messagesEl = document.getElementById("chatMessages");
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+
+      const input = document.getElementById("composerInput");
+      const sendBtn = document.getElementById("composerSend");
+
+      async function doSend() {
+        const body = input.value.trim();
+        if (!body) return;
+        sendBtn.disabled = true;
+        try {
+          await sendMessage({
+            senderRole: role,
+            senderId: userId,
+            recipientId: threadData.other_party_id,
+            body,
+          });
+          input.value = "";
+          await loadConversations();
+          await openConversation(threadData.conversation_id);
+        } catch (err) {
+          alert(err.message);
+        } finally {
+          sendBtn.disabled = false;
+        }
+      }
+
+      sendBtn.addEventListener("click", doSend);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          doSend();
+        }
+      });
+    }
+
+    async function openConversation(conversationId) {
+      activeConversationId = conversationId;
+      renderConversationList();
+      try {
+        const threadData = await fetchConversationMessages(conversationId, role, userId);
+        renderChat(threadData);
+      } catch (err) {
+        document.getElementById("chatPane").innerHTML =
+          `<div class="empty-chat-state">${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    // ---------- New message modal ----------
+
+    function populateRecipientOptions() {
+      const select = document.getElementById("recipientSelect");
+      const options = otherRole === "employer" ? TEST_EMPLOYERS : TEST_SEEKERS;
+      select.innerHTML = options.map((o) => `<option value="${o.id}">${escapeHtml(o.label)}</option>`).join("");
+    }
+
+    function openNewMessageModal(prefillOtherId) {
+      populateRecipientOptions();
+      if (prefillOtherId) document.getElementById("recipientSelect").value = String(prefillOtherId);
+      document.getElementById("newMessageBody").value = "";
+      document.getElementById("newMessageError").style.display = "none";
+      document.getElementById("newMessageModal").style.display = "flex";
+    }
+
+    function closeNewMessageModal() {
+      document.getElementById("newMessageModal").style.display = "none";
+    }
+
+    document.getElementById("newMessageBtn").addEventListener("click", () => openNewMessageModal());
+    document.getElementById("cancelNewMessage").addEventListener("click", closeNewMessageModal);
+
+    document.getElementById("sendNewMessage").addEventListener("click", async () => {
+      const recipientId = Number(document.getElementById("recipientSelect").value);
+      const body = document.getElementById("newMessageBody").value.trim();
+      const errEl = document.getElementById("newMessageError");
+      if (!body) {
+        errEl.textContent = "Message cannot be empty.";
+        errEl.style.display = "block";
+        return;
+      }
+      try {
+        const sent = await sendMessage({
+          senderRole: role,
+          senderId: userId,
+          recipientId,
+          body,
+          jobId: deepLinkJobId,
+        });
+        closeNewMessageModal();
+        await loadConversations();
+        await openConversation(sent.conversation_id);
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = "block";
+      }
+    });
+
+    // ---------- Init ----------
+
+    async function init() {
+      renderTopbar();
+      renderDevBar();
+      await loadConversations();
+
+      if (deepLinkOtherId) {
+        // Deep-linked from "Message Employer" / "Message Seeker" — jump
+        // straight into that thread (creating it if it doesn't exist yet)
+        // rather than making the user find it in the list.
+        try {
+          const { conversation_id } = await findOrCreateConversation(role, userId, deepLinkOtherId);
+          await loadConversations();
+          await openConversation(conversation_id);
+        } catch (err) {
+          openNewMessageModal(deepLinkOtherId);
+        }
+      } else if (conversations.length > 0) {
+        openConversation(conversations[0].id);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -444,6 +444,74 @@ class EducationSuggestion(BaseModel):
     end_date: str = ""
 
 
+# ---------- Messaging (US-40 / US-41 / US-42 / US-43) ----------
+
+
+class MessageCreate(BaseModel):
+    """Body for POST /api/messages.
+
+    sender_role/sender_id identify who's sending (matches the "acting as"
+    dev-user pattern used elsewhere — real auth arrives Sprint 3).
+    recipient_id is the id of the other party, whose role is the opposite
+    of sender_role. job_id is optional: a message can reference a specific
+    job posting ("regarding this job") or be a general enquiry.
+    """
+
+    sender_role: str = Field(..., pattern="^(seeker|employer)$")
+    sender_id: int
+    recipient_id: int
+    body: str = Field(..., min_length=1, max_length=4000)
+    job_id: Optional[int] = None
+
+    @field_validator("body")
+    @classmethod
+    def _body_not_blank(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("Message cannot be empty.")
+        return value
+
+
+class MessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    conversation_id: int
+    sender_role: str
+    sender_id: int
+    body: str
+    job_id: Optional[int] = None
+    job_title: Optional[str] = None
+    is_read: bool
+    created_at: datetime
+
+    @classmethod
+    def from_message(cls, message) -> "MessageOut":
+        return cls(
+            id=message.id,
+            conversation_id=message.conversation_id,
+            sender_role=message.sender_role,
+            sender_id=message.sender_id,
+            body=message.body,
+            job_id=message.job_id,
+            job_title=message.job.title if message.job else None,
+            is_read=bool(message.is_read),
+            created_at=message.created_at,
+        )
+
+
+class ConversationOut(BaseModel):
+    """One row in the inbox list — the other party plus a preview of the
+    most recent message, like a WhatsApp chat list entry."""
+
+    id: int
+    other_party_id: int
+    other_party_name: str
+    last_message_preview: str
+    last_message_at: Optional[datetime] = None
+    unread_count: int = 0
+
+
 class ParsedResumeOut(BaseModel):
     full_name: str = ""
     email: str = ""

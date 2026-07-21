@@ -13,13 +13,12 @@
   <div class="brand">Job Portal</div>
   <div class="topbar-right">
     <nav>
-      <a href="/UI/html/browse_job.html">Browse Jobs</a>
-      <a href="/UI/html/my_application.html">My Applications</a>
-      <a href="/UI/html/messages.html?role=seeker">Messages</a>
-      <a href="/UI/html/notifications.html">Notifications</a>
-      <a href="/UI/html/profile.html">Profile</a>
+      <a href="/UI/html/job_management.html">My Postings</a>
+      <a href="/UI/html/employer_applications.html">Applications</a>
+      <a href="/UI/html/messages.html?role=employer">Messages</a>
+      <a href="/UI/html/employer_notifications.html" class="active">Notifications</a>
     </nav>
-    <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
+    <a href="/UI/html/browse_job.html" class="role-switch">Job Seeker</a>
   </div>
 </header>
 
@@ -27,7 +26,7 @@
 
   <main class="page">
     <h1>Notifications</h1>
-    <p class="subtitle">Stay updated with your application progress.</p>
+    <p class="subtitle">Stay updated on applications and messages from job seekers.</p>
 
     <div class="notification-list" id="notificationList">
       <p class="subtitle">Loading notifications...</p>
@@ -36,24 +35,9 @@
 
   <script src="../js/api.js"></script>
   <script>
-    const seekerId = (typeof getCurrentSeekerId === "function") ? getCurrentSeekerId() : 1;
-    if (typeof renderDevUserBar === "function") {
-      renderDevUserBar("devUserBar");
-    } else {
-      document.getElementById("devUserBar").innerHTML = `
-        Acting as: Seeker #${seekerId} — Aisha
-        <span style="opacity:0.75">(login stand-in for Sprint 1)</span>
-      `;
-    }
-
-    function escapeHtml(str) {
-      if (!str) return "";
-      return str
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+    const employerId = (typeof getCurrentEmployerId === "function") ? getCurrentEmployerId() : 1;
+    if (typeof renderDevEmployerBar === "function") {
+      renderDevEmployerBar("devUserBar");
     }
 
     function notificationCardHtml(note) {
@@ -72,9 +56,7 @@
     async function loadNotifications() {
       const listEl = document.getElementById("notificationList");
       try {
-        const response = await fetch(`/api/notifications?seeker_id=${seekerId}`);
-        if (!response.ok) throw new Error("Failed to pull database entries");
-        const notifications = await response.json();
+        const notifications = await apiFetch(`/api/notifications?role=employer&user_id=${employerId}`);
 
         if (notifications.length === 0) {
           listEl.innerHTML = `
