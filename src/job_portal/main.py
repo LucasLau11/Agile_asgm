@@ -47,6 +47,7 @@ _ensure_columns(
         "attachment_filename": "VARCHAR(255)",
         "attachment_url": "VARCHAR(500)",
         "attachment_type": "VARCHAR(20)",
+        "message_type": "VARCHAR(20) DEFAULT 'text'",
     },
 )
 _ensure_columns(

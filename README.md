@@ -29,3 +29,6 @@ We use a tiny FastAPI app that manages todo items:
 ├── pyproject.toml          # Dependencies & tool config
 ├── Makefile                # Shortcuts: install, lint, test, etc.
 └── README.md               # You're here
+
+## to run the project
+py -m uvicorn job_portal.main:app --reload --app-dir src

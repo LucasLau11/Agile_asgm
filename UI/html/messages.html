@@ -49,6 +49,36 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="interviewModal" style="display:none;">
+    <div class="modal-box">
+      <h3>Schedule Interview</h3>
+      <label for="interviewDateTime" style="display:block; font-weight:600; margin-bottom:6px;">Date &amp; time</label>
+      <input type="datetime-local" id="interviewDateTime" style="width:100%; margin-bottom:12px;" />
+
+      <label for="interviewDuration" style="display:block; font-weight:600; margin-bottom:6px;">Duration (minutes)</label>
+      <input type="number" id="interviewDuration" value="30" min="15" max="480" step="15" style="width:100%; margin-bottom:12px;" />
+
+      <label for="interviewMode" style="display:block; font-weight:600; margin-bottom:6px;">Mode</label>
+      <select id="interviewMode" style="width:100%; margin-bottom:12px;">
+        <option value="video">Video call</option>
+        <option value="phone">Phone call</option>
+        <option value="in_person">In person</option>
+      </select>
+
+      <label for="interviewLocation" style="display:block; font-weight:600; margin-bottom:6px;">Location / link</label>
+      <input type="text" id="interviewLocation" placeholder="Meeting link or address" style="width:100%; margin-bottom:12px;" />
+
+      <label for="interviewNotes" style="display:block; font-weight:600; margin-bottom:6px;">Notes (optional)</label>
+      <textarea id="interviewNotes" rows="3" placeholder="Anything the candidate should know…"></textarea>
+
+      <p class="status-msg error" id="interviewError" style="display:none;"></p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="cancelInterview" type="button">Cancel</button>
+        <button class="btn btn-primary" id="sendInterview" type="button">Send Invitation</button>
+      </div>
+    </div>
+  </div>
+
   <script src="../js/api.js"></script>
   <script>
     const params = new URLSearchParams(location.search);
@@ -205,7 +235,69 @@
       return ageMinutes <= EDIT_WINDOW_MINUTES;
     }
 
+    function formatInterviewDateTime(iso) {
+      const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
+      return d.toLocaleString(undefined, {
+        weekday: "short", month: "short", day: "numeric",
+        hour: "numeric", minute: "2-digit",
+      });
+    }
+
+    function interviewModeLabel(mode) {
+      if (mode === "video") return "Video call";
+      if (mode === "phone") return "Phone call";
+      return "In person";
+    }
+
+    function interviewStatusBadge(status) {
+      if (status === "accepted") return `<span class="interview-status accepted">✓ Accepted</span>`;
+      if (status === "declined") return `<span class="interview-status declined">✕ Declined</span>`;
+      if (status === "cancelled") return `<span class="interview-status declined">Cancelled</span>`;
+      return `<span class="interview-status pending">Awaiting response</span>`;
+    }
+
+    function interviewBubbleHtml(m) {
+      const mine = m.sender_role === role;
+      const inv = m.interview;
+      const isRecipientSeeker = role === "seeker" && !mine;
+      const canRespond = isRecipientSeeker && inv.status === "pending";
+      // Only the employer who sent it can reschedule/cancel, and only
+      // while it's still a live invitation (not already declined/cancelled).
+      const canManage = role === "employer" && mine && (inv.status === "pending" || inv.status === "accepted");
+
+      return `
+        <div class="bubble-row ${mine ? "mine" : ""}" data-id="${m.id}">
+          <div class="bubble interview-bubble">
+            ${m.job_title ? `<span class="job-tag">Re: ${escapeHtml(m.job_title)}</span>` : ""}
+            <div class="interview-card">
+              <div class="interview-title">📅 Interview Invitation</div>
+              <div class="interview-detail"><strong>When:</strong> ${escapeHtml(formatInterviewDateTime(inv.scheduled_at))} (${inv.duration_minutes} min)</div>
+              <div class="interview-detail"><strong>Mode:</strong> ${escapeHtml(interviewModeLabel(inv.mode))}</div>
+              ${inv.location_or_link ? `<div class="interview-detail"><strong>Where:</strong> ${escapeHtml(inv.location_or_link)}</div>` : ""}
+              ${inv.notes ? `<div class="interview-detail">${escapeHtml(inv.notes)}</div>` : ""}
+              <div class="interview-detail">${interviewStatusBadge(inv.status)}</div>
+              ${canRespond ? `
+                <div class="interview-actions">
+                  <button class="btn btn-secondary" data-interview-action="declined" data-id="${m.id}">Decline</button>
+                  <button class="btn btn-primary" data-interview-action="accepted" data-id="${m.id}">Accept</button>
+                </div>
+              ` : ""}
+              ${canManage ? `
+                <div class="interview-actions">
+                  <button class="btn btn-secondary" data-interview-manage="reschedule" data-id="${m.id}">Reschedule</button>
+                  <button class="btn btn-secondary" data-interview-manage="cancel" data-id="${m.id}">Cancel</button>
+                </div>
+              ` : ""}
+            </div>
+            <span class="time">${formatMessageDateTime(m.created_at)}</span>
+          </div>
+        </div>`;
+    }
+
     function bubbleHtml(m) {
+      if (m.message_type === "interview_invite" && m.interview) {
+        return interviewBubbleHtml(m);
+      }
       const mine = m.sender_role === role;
       if (m.is_deleted) {
         return `
@@ -261,8 +353,14 @@
       // Cheap way to detect "did anything actually change" before
       // re-rendering on a poll tick, so we're not redrawing every 4s for
       // no reason (and so open bubble menus don't keep getting slammed shut).
+      // Includes interview.status so Accept/Decline/Reschedule/Cancel (which
+      // change status but not body/is_read/is_deleted/is_edited/attachment_url)
+      // are actually detected as changes.
       return JSON.stringify(
-        threadData.messages.map((m) => [m.id, m.body, m.is_read, m.is_deleted, m.is_edited, m.attachment_url])
+        threadData.messages.map((m) => [
+          m.id, m.body, m.is_read, m.is_deleted, m.is_edited, m.attachment_url,
+          m.interview ? m.interview.status : null,
+        ])
       );
     }
 
@@ -279,6 +377,7 @@
         <div class="attachment-preview" id="attachmentPreview" style="display:none;"></div>
         <div class="chat-composer">
           <button class="btn btn-secondary attach-btn" id="attachBtn" type="button" title="Attach image or file">📎</button>
+          ${role === "employer" ? `<button class="btn btn-secondary" id="interviewBtn" type="button" title="Schedule an interview">📅 Interview</button>` : ""}
           <input type="file" id="attachInput" accept="${ALLOWED_ATTACHMENT_TYPES}" style="display:none;" />
           <textarea id="composerInput" placeholder="Type a message…"></textarea>
           <button class="btn btn-primary" id="composerSend" type="button">Send</button>
@@ -287,6 +386,12 @@
 
       renderMessagesInto(threadData);
       wireComposer(threadData);
+
+      if (role === "employer") {
+        document.getElementById("interviewBtn").addEventListener("click", () => {
+          openInterviewModal(threadData.other_party_id);
+        });
+      }
 
       document.getElementById("deleteConvoBtn").addEventListener("click", async () => {
         if (!confirm("Delete this conversation from your inbox? The other person will still see it.")) return;
@@ -329,6 +434,52 @@
               await handleDelete(id, "everyone");
             }
           }
+        });
+      });
+
+      document.querySelectorAll("[data-interview-action]").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const messageId = Number(btn.dataset.id);
+          const response = btn.dataset.interviewAction; // "accepted" | "declined"
+          const label = response === "accepted" ? "accept" : "decline";
+          if (!confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} this interview invitation?`)) return;
+          try {
+            await respondToInterview(messageId, userId, response);
+            await loadConversations();
+            await refreshActiveThread({ force: true });
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+      });
+
+      document.querySelectorAll("[data-interview-manage]").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const messageId = Number(btn.dataset.id);
+          const action = btn.dataset.interviewManage; // "reschedule" | "cancel"
+
+          if (action === "cancel") {
+            if (!confirm("Cancel this interview invitation? The candidate will be notified.")) return;
+            try {
+              await cancelInterview(messageId, userId);
+              await loadConversations();
+              await refreshActiveThread({ force: true });
+            } catch (err) {
+              alert(err.message);
+            }
+            return;
+          }
+
+          // action === "reschedule" — reopen the modal pre-filled with the
+          // existing details, editing this invite instead of creating a new one.
+          const message = activeThread.messages.find((mm) => mm.id === messageId);
+          if (!message) return;
+          openInterviewModal(activeThread.other_party_id, {
+            messageId,
+            invite: message.interview,
+          });
         });
       });
     }
@@ -515,6 +666,97 @@
         closeNewMessageModal();
         await loadConversations();
         await openConversation(sent.conversation_id);
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = "block";
+      }
+    });
+
+    // ---------- Interview invitation modal (employer only) ----------
+
+    let interviewRecipientId = null;
+    let reschedulingMessageId = null; // null = creating a new invite, else editing this one
+
+    function toLocalDateTimeInputValue(iso) {
+      // <input type="datetime-local"> needs "YYYY-MM-DDTHH:mm" in LOCAL time,
+      // not the UTC ISO string the backend returns.
+      const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function openInterviewModal(recipientSeekerId, editing = null) {
+      interviewRecipientId = recipientSeekerId;
+      reschedulingMessageId = editing ? editing.messageId : null;
+
+      const heading = document.querySelector("#interviewModal h3");
+      const submitBtn = document.getElementById("sendInterview");
+      if (editing) {
+        heading.textContent = "Reschedule Interview";
+        submitBtn.textContent = "Save Changes";
+        document.getElementById("interviewDateTime").value = toLocalDateTimeInputValue(editing.invite.scheduled_at);
+        document.getElementById("interviewDuration").value = editing.invite.duration_minutes;
+        document.getElementById("interviewMode").value = editing.invite.mode;
+        document.getElementById("interviewLocation").value = editing.invite.location_or_link || "";
+        document.getElementById("interviewNotes").value = editing.invite.notes || "";
+      } else {
+        heading.textContent = "Schedule Interview";
+        submitBtn.textContent = "Send Invitation";
+        document.getElementById("interviewDateTime").value = "";
+        document.getElementById("interviewDuration").value = 30;
+        document.getElementById("interviewMode").value = "video";
+        document.getElementById("interviewLocation").value = "";
+        document.getElementById("interviewNotes").value = "";
+      }
+      document.getElementById("interviewError").style.display = "none";
+      document.getElementById("interviewModal").style.display = "flex";
+    }
+
+    function closeInterviewModal() {
+      document.getElementById("interviewModal").style.display = "none";
+    }
+
+    document.getElementById("cancelInterview").addEventListener("click", closeInterviewModal);
+
+    document.getElementById("sendInterview").addEventListener("click", async () => {
+      const errEl = document.getElementById("interviewError");
+      const dateTimeRaw = document.getElementById("interviewDateTime").value;
+      const duration = parseInt(document.getElementById("interviewDuration").value, 10);
+      const mode = document.getElementById("interviewMode").value;
+      const location_or_link = document.getElementById("interviewLocation").value.trim();
+      const notes = document.getElementById("interviewNotes").value.trim();
+
+      if (!dateTimeRaw) {
+        errEl.textContent = "Pick a date and time.";
+        errEl.style.display = "block";
+        return;
+      }
+      if (!Number.isInteger(duration) || duration < 15) {
+        errEl.textContent = "Duration must be at least 15 minutes.";
+        errEl.style.display = "block";
+        return;
+      }
+
+      const details = {
+        scheduled_at: new Date(dateTimeRaw).toISOString(),
+        duration_minutes: duration,
+        mode,
+        location_or_link,
+        notes,
+      };
+
+      try {
+        if (reschedulingMessageId) {
+          await rescheduleInterview(reschedulingMessageId, userId, details);
+          closeInterviewModal();
+          await loadConversations();
+          await refreshActiveThread({ force: true });
+        } else {
+          const sent = await sendInterviewInvite(userId, interviewRecipientId, deepLinkJobId, details);
+          closeInterviewModal();
+          await loadConversations();
+          await openConversation(sent.conversation_id);
+        }
       } catch (err) {
         errEl.textContent = err.message;
         errEl.style.display = "block";

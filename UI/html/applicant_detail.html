@@ -167,6 +167,12 @@
         if (!response.ok) throw new Error("Failed to save changes");
 
         statusEl.textContent = "Recruitment stage updated successfully!";
+        // Re-fetch and re-render so the stage timeline and dropdown reflect
+        // the saved change immediately — previously this only updated the
+        // status text, leaving the timeline/select showing the old stage
+        // until the page was manually reloaded.
+        await loadApplicant();
+        document.getElementById("saveStatus").textContent = "Recruitment stage updated successfully!";
       } catch (err) {
         console.error(err);
         statusEl.textContent = `Couldn't save changes: ${err.message}`;

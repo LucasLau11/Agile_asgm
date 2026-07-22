@@ -180,6 +180,9 @@ class Message(Base):
     # Optional "regarding this job" tag on an individual message — not
     # required, since US-40/41 allow general conversation too.
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True, index=True)
+    # US-46/47: "text" (default) or "interview_invite" — the latter carries
+    # structured scheduling details via the linked InterviewInvite row.
+    message_type = Column(String(20), nullable=False, default="text")
     is_read = Column(Integer, nullable=False, default=0)  # 0 = unread, 1 = read
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -203,3 +206,27 @@ class Message(Base):
 
     conversation = relationship("Conversation", back_populates="messages")
     job = relationship("Job")
+    interview_invite = relationship(
+        "InterviewInvite", uselist=False, back_populates="message", cascade="all, delete-orphan"
+    )
+
+
+class InterviewInvite(Base):
+    """US-46/US-47: structured interview details attached to a message with
+    message_type='interview_invite'. One-to-one with Message rather than
+    extra columns bolted onto Message itself, since only this one message
+    type needs these fields."""
+
+    __tablename__ = "interview_invites"
+
+    id = Column(Integer, primary_key=True, index=True)
+    message_id = Column(Integer, ForeignKey("messages.id"), nullable=False, unique=True, index=True)
+    scheduled_at = Column(DateTime, nullable=False)
+    duration_minutes = Column(Integer, nullable=False, default=30)
+    mode = Column(String(20), nullable=False, default="video")  # video | phone | in_person
+    location_or_link = Column(Text, nullable=True, default="")
+    notes = Column(Text, nullable=True, default="")
+    status = Column(String(20), nullable=False, default="pending")  # pending | accepted | declined
+    responded_at = Column(DateTime, nullable=True)
+
+    message = relationship("Message", back_populates="interview_invite")

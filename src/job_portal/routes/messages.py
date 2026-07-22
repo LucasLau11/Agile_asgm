@@ -4,14 +4,21 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
 from job_portal.database import get_db
-from job_portal.models import Conversation, Message, Notification, SeekerProfile
+from job_portal.models import Conversation, InterviewInvite, Message, Notification, SeekerProfile
 from job_portal.routes.applications import EMPLOYER_DIRECTORY
-from job_portal.schemas import ConversationOut, MessageCreate, MessageEdit, MessageOut
+from job_portal.schemas import (
+    ConversationOut,
+    InterviewInviteCreate,
+    InterviewResponseIn,
+    MessageCreate,
+    MessageEdit,
+    MessageOut,
+)
 from job_portal.services.file_validation import (
     MAX_MESSAGE_ATTACHMENT_SIZE_BYTES,
     detect_safe_message_attachment,
@@ -300,6 +307,174 @@ async def api_edit_message(
 
     message.body = encrypt_text(body.body)
     message.edited_at = datetime.utcnow()
+    db.commit()
+    db.refresh(message)
+
+    return JSONResponse(content=_message_out(message))
+
+
+# ---------- Interview invitations (US-46 / US-47) ----------
+
+
+@router.post("/api/messages/interview-invite")
+async def api_send_interview_invite(
+    employer_id: int = Query(...),
+    seeker_id: int = Query(...),
+    job_id: Optional[int] = Query(None),
+    body: InterviewInviteCreate = Body(...),
+    db: Session = Depends(get_db),
+):
+    """US-46: employer sends a structured interview invitation instead of
+    plain text. Rendered as a distinct card in messages.html, with an
+    Accept/Decline action for the seeker (see api_respond_to_interview)."""
+
+    convo = _get_or_create_conversation(db, seeker_id, employer_id)
+    _unhide_for_both(convo)
+
+    message = Message(
+        conversation_id=convo.id,
+        sender_role="employer",
+        sender_id=employer_id,
+        body=encrypt_text(""),  # scheduling details live on InterviewInvite, not body
+        job_id=job_id,
+        message_type="interview_invite",
+    )
+    db.add(message)
+    db.flush()  # need message.id before creating the linked invite row
+
+    invite = InterviewInvite(
+        message_id=message.id,
+        scheduled_at=body.scheduled_at,
+        duration_minutes=body.duration_minutes,
+        mode=body.mode,
+        location_or_link=body.location_or_link or "",
+        notes=body.notes or "",
+    )
+    db.add(invite)
+
+    convo.last_message_at = datetime.utcnow()
+    _notify_recipient(
+        db,
+        "employer",
+        employer_id,
+        seeker_id,
+        f"Interview invitation for {body.scheduled_at.strftime('%d %b, %I:%M %p')}",
+    )
+
+    db.commit()
+    db.refresh(message)
+
+    return JSONResponse(content=_message_out(message))
+
+
+@router.post("/api/messages/{message_id}/interview-response")
+async def api_respond_to_interview(
+    message_id: int,
+    user_id: int = Query(...),
+    body: InterviewResponseIn = Body(...),
+    db: Session = Depends(get_db),
+):
+    """US-47: seeker accepts or declines. The employer is notified either
+    way — that's the point of the story ("so employers know whether I can
+    attend"), not just a silent status flip."""
+
+    message = db.query(Message).filter(Message.id == message_id).first()
+    if not message or message.message_type != "interview_invite" or not message.interview_invite:
+        raise HTTPException(status_code=404, detail="Interview invitation not found.")
+
+    _require_participant(message.conversation, "seeker", user_id)
+    if message.sender_role != "employer":
+        raise HTTPException(status_code=403, detail="Not the recipient of this invitation.")
+
+    invite = message.interview_invite
+    invite.status = body.response
+    invite.responded_at = datetime.utcnow()
+
+    seeker_name = _seeker_name(user_id, db)
+    verb = "accepted" if body.response == "accepted" else "declined"
+    _notify_recipient(
+        db, "seeker", user_id, message.sender_id,
+        f"{seeker_name} {verb} your interview invitation",
+    )
+
+    db.commit()
+    db.refresh(message)
+
+    return JSONResponse(content=_message_out(message))
+
+
+@router.put("/api/messages/{message_id}/interview-reschedule")
+async def api_reschedule_interview(
+    message_id: int,
+    employer_id: int = Query(...),
+    body: InterviewInviteCreate = Body(...),
+    db: Session = Depends(get_db),
+):
+    """US-XX: employer reschedules an interview they sent. Resets status
+    back to 'pending' — a rescheduled time needs fresh confirmation, an
+    old acceptance/decline no longer applies to the new slot."""
+
+    message = db.query(Message).filter(Message.id == message_id).first()
+    if not message or message.message_type != "interview_invite" or not message.interview_invite:
+        raise HTTPException(status_code=404, detail="Interview invitation not found.")
+
+    _require_participant(message.conversation, "employer", employer_id)
+    if message.sender_role != "employer" or message.sender_id != employer_id:
+        raise HTTPException(status_code=403, detail="Only the sender can reschedule this invitation.")
+
+    invite = message.interview_invite
+    if invite.status == "cancelled":
+        raise HTTPException(status_code=400, detail="Can't reschedule a cancelled invitation.")
+
+    invite.scheduled_at = body.scheduled_at
+    invite.duration_minutes = body.duration_minutes
+    invite.mode = body.mode
+    invite.location_or_link = body.location_or_link or ""
+    invite.notes = body.notes or ""
+    invite.status = "pending"
+    invite.responded_at = None
+
+    message.conversation.last_message_at = datetime.utcnow()
+    seeker_id = message.conversation.seeker_id
+    _notify_recipient(
+        db, "employer", employer_id, seeker_id,
+        f"Interview rescheduled to {body.scheduled_at.strftime('%d %b, %I:%M %p')}",
+    )
+
+    db.commit()
+    db.refresh(message)
+
+    return JSONResponse(content=_message_out(message))
+
+
+@router.post("/api/messages/{message_id}/interview-cancel")
+async def api_cancel_interview(
+    message_id: int,
+    employer_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """US-XX: employer cancels an interview they sent. Kept visible in the
+    thread as a cancelled card (not deleted) so there's a clear record,
+    matching how declined invitations stay visible rather than vanishing."""
+
+    message = db.query(Message).filter(Message.id == message_id).first()
+    if not message or message.message_type != "interview_invite" or not message.interview_invite:
+        raise HTTPException(status_code=404, detail="Interview invitation not found.")
+
+    _require_participant(message.conversation, "employer", employer_id)
+    if message.sender_role != "employer" or message.sender_id != employer_id:
+        raise HTTPException(status_code=403, detail="Only the sender can cancel this invitation.")
+
+    invite = message.interview_invite
+    invite.status = "cancelled"
+    invite.responded_at = datetime.utcnow()
+
+    seeker_id = message.conversation.seeker_id
+    _notify_recipient(
+        db, "employer", employer_id, seeker_id,
+        "Your interview invitation was cancelled",
+    )
+
     db.commit()
     db.refresh(message)
 
