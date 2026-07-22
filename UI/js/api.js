@@ -407,6 +407,23 @@ function findOrCreateConversation(role, userId, otherId) {
   return apiFetch(`/api/conversations/find-or-create?${params.toString()}`, { method: "POST" });
 }
 
+/** Hides a whole thread from the requester's own inbox (like WhatsApp's
+ * "Delete chat") — the other party's copy is unaffected, and the thread
+ * reappears for both if there's new activity afterwards. */
+function deleteConversation(conversationId, role, userId) {
+  return apiFetch(`/api/conversations/${conversationId}?role=${role}&user_id=${userId}`, {
+    method: "DELETE",
+  });
+}
+
+/** Builds an authenticated URL for an encrypted attachment — the backend
+ * decrypts on the fly and checks conversation membership, so role/user_id
+ * have to travel with every request for it (see routes/messages.py). */
+function attachmentUrlFor(baseUrl, role, userId) {
+  if (!baseUrl) return "";
+  return `${baseUrl}?role=${role}&user_id=${userId}`;
+}
+
 /** Rough "x minutes/hours ago" formatting — used in the conversation list preview. */
 function timeAgo(isoString) {
   if (!isoString) return "";
@@ -431,4 +448,52 @@ function formatMessageDateTime(isoString) {
   if (isToday) return timePart;
   const datePart = then.toLocaleDateString(undefined, { day: "numeric", month: "short" });
   return `${datePart}, ${timePart}`;
+}
+
+// ---------------------------------------------------------------------------
+// Unread-messages nav badge. api.js is loaded on every page, so this runs
+// everywhere automatically — no per-page wiring needed. It finds whichever
+// "Messages" nav link is on the current page (seeker or employer topbar)
+// and keeps an unread-count pill on it current via polling.
+// ---------------------------------------------------------------------------
+
+const MESSAGES_BADGE_POLL_MS = 20000;
+
+async function _refreshMessagesNavBadge() {
+  const link = document.querySelector('a[href*="messages.html"]');
+  if (!link) return; // this page has no Messages nav link (yet, or at all)
+
+  const isEmployer = link.getAttribute("href").includes("role=employer");
+  const role = isEmployer ? "employer" : "seeker";
+  const userId = isEmployer ? getCurrentEmployerId() : getCurrentSeekerId();
+
+  try {
+    const conversations = await fetchConversations(role, userId);
+    const total = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+
+    let badge = link.querySelector(".nav-badge");
+    if (total > 0) {
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "nav-badge";
+        link.appendChild(badge);
+      }
+      badge.textContent = total > 99 ? "99+" : String(total);
+    } else if (badge) {
+      badge.remove();
+    }
+  } catch (_) {
+    // A badge failing to load shouldn't break the rest of the page.
+  }
+}
+
+function _startMessagesNavBadgePolling() {
+  // Some pages (messages.html itself, employer pages) build their topbar
+  // via JS rather than static HTML — give that a moment to run first.
+  setTimeout(_refreshMessagesNavBadge, 300);
+  setInterval(_refreshMessagesNavBadge, MESSAGES_BADGE_POLL_MS);
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("DOMContentLoaded", _startMessagesNavBadgePolling);
 }

@@ -1,11 +1,14 @@
 """
-At-rest encryption for stored message bodies (Message.body).
+At-rest encryption for stored message content (Message.body and, since the
+"encrypt attachments too" follow-up, attachment files under
+uploads/messages/).
 
-WHAT THIS DOES: encrypts message text before it's written to job_portal.db
-using a symmetric key (Fernet, which is AES-128-CBC + HMAC under the hood)
-held by the server. It protects message content if someone reads the raw
-.db file directly (e.g. a copied laptop, a leaked backup) — the text isn't
-sitting there in plain SQL rows.
+WHAT THIS DOES: encrypts message text and attachment bytes before they're
+written to disk/DB using a symmetric key (Fernet, which is AES-128-CBC +
+HMAC under the hood) held by the server. It protects content if someone
+reads the raw job_portal.db file or the uploads/ directory directly (e.g. a
+copied laptop, a leaked backup) — nothing sits there in plain, readable
+form.
 
 WHAT THIS DOES NOT DO: this is not end-to-end encryption. The server holds
 the key and decrypts every message to render it in the UI, same as it
@@ -64,3 +67,18 @@ def decrypt_text(ciphertext: str) -> str:
         return _fernet.decrypt(ciphertext.encode("ascii")).decode("utf-8")
     except (InvalidToken, ValueError):
         return ciphertext
+
+
+def encrypt_bytes(data: bytes) -> bytes:
+    """Same idea as encrypt_text, but for attachment file contents written
+    to disk under uploads/messages/ — so a copied/leaked upload directory
+    doesn't expose message attachments in the clear either."""
+    return _fernet.encrypt(data)
+
+
+def decrypt_bytes(data: bytes) -> bytes:
+    """Raises InvalidToken if data isn't valid ciphertext for the current
+    key — unlike decrypt_text, callers here should let that propagate
+    (routes/messages.py turns it into a 500/404 rather than silently
+    serving garbage binary content as if it were a real image/PDF)."""
+    return _fernet.decrypt(data)

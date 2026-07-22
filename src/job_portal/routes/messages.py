@@ -1,10 +1,11 @@
+import mimetypes
 import os
 from datetime import datetime, timedelta
 from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
 from job_portal.database import get_db
@@ -16,7 +17,7 @@ from job_portal.services.file_validation import (
     detect_safe_message_attachment,
     sanitize_display_filename,
 )
-from job_portal.services.message_crypto import decrypt_text, encrypt_text
+from job_portal.services.message_crypto import decrypt_bytes, decrypt_text, encrypt_bytes, encrypt_text
 
 router = APIRouter(tags=["Messaging"])
 
@@ -72,7 +73,7 @@ def _message_out(message: Message) -> dict:
     return MessageOut.from_message(message, body=_display_body(message)).model_dump(mode="json")
 
 
-def _visible_messages(convo: Conversation, role: str) -> list[Message]:
+def _visible_messages(convo: Conversation, role: str) -> list:
     """Messages that haven't been 'deleted for me' by this role. 'Deleted
     for everyone' messages stay in this list — they're still visible, just
     rendered as a placeholder (see _display_body)."""
@@ -118,6 +119,14 @@ def _require_participant(convo: Conversation, role: str, user_id: int) -> None:
         raise HTTPException(status_code=403, detail="Not a participant in this conversation.")
 
 
+def _unhide_for_both(convo: Conversation) -> None:
+    """A conversation someone had 'deleted' (hidden from their own inbox)
+    reappears once there's fresh activity — same convention as WhatsApp:
+    deleting a chat clears your view of it, it doesn't block the contact."""
+    convo.hidden_for_seeker = 0
+    convo.hidden_for_employer = 0
+
+
 # ---------- Send (text) ----------
 
 
@@ -133,6 +142,7 @@ async def api_send_message(body: MessageCreate, db: Session = Depends(get_db)):
         seeker_id, employer_id = body.recipient_id, body.sender_id
 
     convo = _get_or_create_conversation(db, seeker_id, employer_id)
+    _unhide_for_both(convo)
 
     message = Message(
         conversation_id=convo.id,
@@ -165,7 +175,10 @@ async def api_send_message_with_attachment(
     db: Session = Depends(get_db),
 ):
     """Same as api_send_message, but attaches an image or document. The
-    caption (`body`) is optional — a bare attachment is a valid message."""
+    caption (`body`) is optional — a bare attachment is a valid message.
+    The file is encrypted before it's written to disk (see
+    services/message_crypto.py) and served back out through the decrypting
+    GET /api/messages/{id}/attachment endpoint, never directly."""
 
     contents = await file.read()
     if len(contents) > MAX_MESSAGE_ATTACHMENT_SIZE_BYTES:
@@ -183,17 +196,12 @@ async def api_send_message_with_attachment(
     if len(caption) > 4000:
         raise HTTPException(status_code=422, detail="Caption is too long (max 4000 characters).")
 
-    os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
-    disk_filename = f"{uuid4().hex}{extension}"
-    disk_path = os.path.join(ATTACHMENTS_DIR, disk_filename)
-    with open(disk_path, "wb") as fh:
-        fh.write(contents)
-
     if sender_role == "seeker":
         seeker_id, employer_id = sender_id, recipient_id
     else:
         seeker_id, employer_id = recipient_id, sender_id
     convo = _get_or_create_conversation(db, seeker_id, employer_id)
+    _unhide_for_both(convo)
 
     message = Message(
         conversation_id=convo.id,
@@ -202,10 +210,18 @@ async def api_send_message_with_attachment(
         body=encrypt_text(caption),
         job_id=job_id,
         attachment_filename=sanitize_display_filename(file.filename),
-        attachment_url=disk_path.replace("\\", "/"),
         attachment_type=attachment_type,
     )
     db.add(message)
+    db.flush()  # need message.id before naming the file on disk
+
+    os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
+    disk_filename = f"{uuid4().hex}{extension}"
+    disk_path = os.path.join(ATTACHMENTS_DIR, disk_filename)
+    with open(disk_path, "wb") as fh:
+        fh.write(encrypt_bytes(contents))
+    message.attachment_url = disk_path.replace("\\", "/")
+
     convo.last_message_at = datetime.utcnow()
     _notify_recipient(
         db, sender_role, sender_id, recipient_id, caption or f"📎 {message.attachment_filename}"
@@ -215,6 +231,43 @@ async def api_send_message_with_attachment(
     db.refresh(message)
 
     return JSONResponse(content=_message_out(message))
+
+
+@router.get("/api/messages/{message_id}/attachment")
+async def api_get_message_attachment(
+    message_id: int,
+    role: str = Query(..., pattern="^(seeker|employer)$"),
+    user_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Decrypts and serves an attachment. Not exposed via the static
+    /uploads mount — that would serve raw ciphertext — so this is the only
+    way to actually retrieve one, and it checks conversation membership
+    the same way the message-list endpoint does."""
+
+    message = db.query(Message).filter(Message.id == message_id).first()
+    if not message or not message.attachment_url:
+        raise HTTPException(status_code=404, detail="Attachment not found.")
+
+    _require_participant(message.conversation, role, user_id)
+
+    if not os.path.exists(message.attachment_url):
+        raise HTTPException(status_code=404, detail="Attachment file is missing on the server.")
+
+    with open(message.attachment_url, "rb") as fh:
+        encrypted_contents = fh.read()
+    try:
+        plaintext_contents = decrypt_bytes(encrypted_contents)
+    except Exception as exc:  # InvalidToken or similar
+        raise HTTPException(status_code=500, detail="Could not decrypt attachment.") from exc
+
+    media_type = mimetypes.guess_type(message.attachment_url)[0] or "application/octet-stream"
+    filename = message.attachment_filename or "attachment"
+    return Response(
+        content=plaintext_contents,
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 
 # ---------- Edit ----------
@@ -253,7 +306,7 @@ async def api_edit_message(
     return JSONResponse(content=_message_out(message))
 
 
-# ---------- Delete ----------
+# ---------- Delete message ----------
 
 
 def _best_effort_delete_attachment(path: Optional[str]) -> None:
@@ -305,6 +358,35 @@ async def api_delete_message(
     return JSONResponse(content={"success": True})
 
 
+# ---------- Delete / hide conversation ----------
+
+
+@router.delete("/api/conversations/{conversation_id}")
+async def api_delete_conversation(
+    conversation_id: int,
+    role: str = Query(..., pattern="^(seeker|employer)$"),
+    user_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Hides the whole thread from the requester's own inbox — like
+    WhatsApp/Telegram's "Delete chat": it clears your view, it doesn't
+    touch the other party's copy or actually erase the messages. If new
+    activity happens afterwards, the conversation reappears for both
+    parties (see _unhide_for_both), rather than staying permanently gone."""
+
+    convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not convo:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+
+    _require_participant(convo, role, user_id)
+
+    col = "hidden_for_seeker" if role == "seeker" else "hidden_for_employer"
+    setattr(convo, col, 1)
+    db.commit()
+
+    return JSONResponse(content={"success": True})
+
+
 # ---------- Inbox / thread ----------
 
 
@@ -315,13 +397,14 @@ async def api_list_conversations(
     db: Session = Depends(get_db),
 ):
     """US-42 / US-43: the inbox — one row per contact, most recently
-    active conversation first, like a WhatsApp chat list."""
+    active conversation first, like a WhatsApp chat list. Threads the
+    requester has "deleted" (hidden_for_<role>) are left out."""
 
     query = db.query(Conversation)
     if role == "seeker":
-        query = query.filter(Conversation.seeker_id == user_id)
+        query = query.filter(Conversation.seeker_id == user_id, Conversation.hidden_for_seeker == 0)
     else:
-        query = query.filter(Conversation.employer_id == user_id)
+        query = query.filter(Conversation.employer_id == user_id, Conversation.hidden_for_employer == 0)
     conversations = query.order_by(Conversation.last_message_at.desc()).all()
 
     results = []
@@ -353,7 +436,9 @@ async def api_get_conversation_messages(
     db: Session = Depends(get_db),
 ):
     """Full thread history. Marks the other party's messages as read —
-    opening a thread is what clears its unread count, same as any chat app."""
+    opening a thread is what clears its unread count, same as any chat app.
+    Also used for polling (messages.html re-calls this every few seconds
+    while a thread is open) to pick up new incoming messages."""
 
     convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not convo:

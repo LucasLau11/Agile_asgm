@@ -249,3 +249,363 @@ def test_existing_seeker_notifications_endpoint_still_works(client):
     r = client.get("/api/notifications?seeker_id=1")
     assert r.status_code == 200
     assert len(r.json()) == 1
+
+
+# ---------------------------------------------------------------------------
+# Encryption at rest
+# ---------------------------------------------------------------------------
+
+
+def test_message_body_stored_encrypted_at_rest(client, db_session):
+    """
+    Given a message is sent
+    When I read the raw DB row directly (bypassing the API)
+    Then the stored body is not the plaintext (it's encrypted), while the
+    API still returns the readable plaintext to the client
+    """
+    from job_portal.models import Message
+
+    r = _send(client, "seeker", 1, 2, "This is a secret question.")
+    assert r.json()["body"] == "This is a secret question."
+
+    row = db_session.query(Message).filter(Message.id == r.json()["id"]).first()
+    assert row.body != "This is a secret question."
+    assert "secret" not in row.body
+
+
+# ---------------------------------------------------------------------------
+# Edit message
+# ---------------------------------------------------------------------------
+
+
+def test_sender_can_edit_message_within_window(client):
+    """
+    Given a seeker just sent a message
+    When they PUT a new body within the edit window
+    Then the message updates and is flagged as edited
+    """
+    sent = _send(client, "seeker", 1, 2, "Orginal typo").json()
+    r = client.put(
+        f"/api/messages/{sent['id']}?role=seeker&user_id=1",
+        json={"body": "Original, fixed"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["body"] == "Original, fixed"
+    assert body["is_edited"] is True
+
+
+def test_only_sender_can_edit_message(client):
+    """
+    Given an employer sent a message
+    When the seeker (recipient) tries to edit it
+    Then I receive 403 Forbidden
+    """
+    sent = _send(client, "employer", 2, 1, "Original").json()
+    r = client.put(
+        f"/api/messages/{sent['id']}?role=seeker&user_id=1",
+        json={"body": "Hacked"},
+    )
+    assert r.status_code == 403
+
+
+def test_cannot_edit_after_edit_window_expires(client, db_session):
+    """
+    Given a message was sent more than 15 minutes ago
+    When the sender tries to edit it
+    Then I receive 400 Bad Request
+    """
+    from datetime import datetime, timedelta
+
+    from job_portal.models import Message
+
+    sent = _send(client, "seeker", 1, 2, "Old message").json()
+    row = db_session.query(Message).filter(Message.id == sent["id"]).first()
+    row.created_at = datetime.utcnow() - timedelta(minutes=20)
+    db_session.commit()
+
+    r = client.put(
+        f"/api/messages/{sent['id']}?role=seeker&user_id=1",
+        json={"body": "Too late"},
+    )
+    assert r.status_code == 400
+
+
+def test_edit_rejects_blank_body(client):
+    """
+    Given a sent message
+    When editing it to a blank body
+    Then I receive 422 Unprocessable Entity
+    """
+    sent = _send(client, "seeker", 1, 2, "Original").json()
+    r = client.put(
+        f"/api/messages/{sent['id']}?role=seeker&user_id=1",
+        json={"body": "   "},
+    )
+    assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Delete message
+# ---------------------------------------------------------------------------
+
+
+def test_delete_for_me_hides_only_for_requester(client):
+    """
+    Given a message exists in a conversation
+    When the recipient deletes it "for me"
+    Then it disappears from their view but the sender still sees it
+    """
+    sent = _send(client, "seeker", 1, 2, "Visible to sender only after this").json()
+    convo_id = sent["conversation_id"]
+
+    r = client.delete(f"/api/messages/{sent['id']}?role=employer&user_id=2&scope=me")
+    assert r.status_code == 200
+
+    employer_view = client.get(f"/api/conversations/{convo_id}/messages?role=employer&user_id=2")
+    assert employer_view.json()["messages"] == []
+
+    seeker_view = client.get(f"/api/conversations/{convo_id}/messages?role=seeker&user_id=1")
+    assert len(seeker_view.json()["messages"]) == 1
+
+
+def test_delete_for_everyone_shows_placeholder_to_both(client):
+    """
+    Given a seeker sent a message
+    When they delete it "for everyone"
+    Then both parties see a "deleted" placeholder instead of the content
+    """
+    sent = _send(client, "seeker", 1, 2, "Oops wrong chat").json()
+    convo_id = sent["conversation_id"]
+
+    r = client.delete(f"/api/messages/{sent['id']}?role=seeker&user_id=1&scope=everyone")
+    assert r.status_code == 200
+
+    for role, uid in [("seeker", 1), ("employer", 2)]:
+        thread = client.get(f"/api/conversations/{convo_id}/messages?role={role}&user_id={uid}")
+        msg = thread.json()["messages"][0]
+        assert msg["is_deleted"] is True
+        assert msg["body"] == "This message was deleted"
+
+
+def test_only_sender_can_delete_for_everyone(client):
+    """
+    Given an employer sent a message
+    When the seeker (recipient) tries to delete it "for everyone"
+    Then I receive 403 Forbidden
+    """
+    sent = _send(client, "employer", 2, 1, "Careful message").json()
+    r = client.delete(f"/api/messages/{sent['id']}?role=seeker&user_id=1&scope=everyone")
+    assert r.status_code == 403
+
+
+def test_recipient_can_delete_received_message_for_me(client):
+    """
+    Given a recipient received a message they don't want to see anymore
+    When they delete it with scope=me (not the sender)
+    Then it's allowed (deleting "for me" doesn't require being the sender)
+    """
+    sent = _send(client, "employer", 2, 1, "Some message").json()
+    r = client.delete(f"/api/messages/{sent['id']}?role=seeker&user_id=1&scope=me")
+    assert r.status_code == 200
+
+
+def test_cannot_delete_message_not_a_participant_in(client):
+    """
+    Given a conversation between seeker 1 and employer 2
+    When seeker 3 (not a participant) tries to delete a message in it
+    Then I receive 403 Forbidden
+    """
+    sent = _send(client, "seeker", 1, 2, "Private").json()
+    r = client.delete(f"/api/messages/{sent['id']}?role=seeker&user_id=3&scope=me")
+    assert r.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Attachments
+# ---------------------------------------------------------------------------
+
+_PNG_1PX = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108020000009077"
+    "3df40000000c4944415408d763f8ffff3f0005fe02fea1399e3f0000000049454e44ae426082"
+)
+
+
+def test_send_image_attachment(client):
+    """
+    Given a seeker attaches a small PNG image
+    When they POST /api/messages/attachment
+    Then the message is created with attachment metadata and type "image"
+    """
+    r = client.post(
+        "/api/messages/attachment",
+        data={"sender_role": "seeker", "sender_id": 1, "recipient_id": 2, "body": "See attached"},
+        files={"file": ("screenshot.png", _PNG_1PX, "image/png")},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["attachment_type"] == "image"
+    assert body["attachment_url"] == f"/api/messages/{body['id']}/attachment"
+    assert body["body"] == "See attached"
+
+
+def test_attachment_without_caption_is_valid(client):
+    """
+    Given a seeker sends just an image with no text
+    When they POST /api/messages/attachment with an empty body
+    Then the message is still created successfully
+    """
+    r = client.post(
+        "/api/messages/attachment",
+        data={"sender_role": "seeker", "sender_id": 1, "recipient_id": 2},
+        files={"file": ("photo.png", _PNG_1PX, "image/png")},
+    )
+    assert r.status_code == 200
+    assert r.json()["body"] == ""
+
+
+def test_attachment_rejects_disallowed_file_type(client):
+    """
+    Given a file that isn't a recognized image/document format
+    When it's uploaded as a message attachment
+    Then I receive 422 Unprocessable Entity, regardless of claimed content-type
+    """
+    r = client.post(
+        "/api/messages/attachment",
+        data={"sender_role": "seeker", "sender_id": 1, "recipient_id": 2},
+        files={"file": ("script.exe", b"not a real file format", "application/octet-stream")},
+    )
+    assert r.status_code == 422
+
+
+def test_conversation_preview_shows_attachment_indicator(client):
+    """
+    Given the latest message in a conversation is an attachment with no caption
+    When viewing the inbox
+    Then the preview indicates an attachment was sent
+    """
+    _send_attachment = client.post(
+        "/api/messages/attachment",
+        data={"sender_role": "seeker", "sender_id": 1, "recipient_id": 2},
+        files={"file": ("resume.png", _PNG_1PX, "image/png")},
+    )
+    assert _send_attachment.status_code == 200
+
+    r = client.get("/api/conversations?role=employer&user_id=2")
+    assert "📎" in r.json()[0]["last_message_preview"]
+
+
+def test_attachment_stored_encrypted_on_disk(client):
+    """
+    Given an image attachment is sent
+    When I read the raw file bytes straight off disk (bypassing the API)
+    Then the bytes are not a valid PNG (they're encrypted) — the API
+    endpoint is the only way to get the real, decrypted file back
+    """
+    from job_portal.models import Message
+
+    sent = client.post(
+        "/api/messages/attachment",
+        data={"sender_role": "seeker", "sender_id": 1, "recipient_id": 2},
+        files={"file": ("photo.png", _PNG_1PX, "image/png")},
+    ).json()
+
+    from job_portal.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        row = db.query(Message).filter(Message.id == sent["id"]).first()
+        with open(row.attachment_url, "rb") as fh:
+            raw_bytes = fh.read()
+        assert raw_bytes != _PNG_1PX
+        assert not raw_bytes.startswith(b"\x89PNG")
+    finally:
+        db.close()
+
+
+def test_authorized_participant_can_fetch_decrypted_attachment(client):
+    """
+    Given an attachment was sent to an employer
+    When the employer fetches it via the attachment endpoint
+    Then they get back the original, decrypted image bytes
+    """
+    sent = client.post(
+        "/api/messages/attachment",
+        data={"sender_role": "seeker", "sender_id": 1, "recipient_id": 2},
+        files={"file": ("photo.png", _PNG_1PX, "image/png")},
+    ).json()
+
+    r = client.get(f"/api/messages/{sent['id']}/attachment?role=employer&user_id=2")
+    assert r.status_code == 200
+    assert r.content == _PNG_1PX
+    assert r.headers["content-type"] == "image/png"
+
+
+def test_non_participant_cannot_fetch_attachment(client):
+    """
+    Given an attachment exists in a seeker-1/employer-2 conversation
+    When employer 3 (not a participant) tries to fetch it
+    Then I receive 403 Forbidden
+    """
+    sent = client.post(
+        "/api/messages/attachment",
+        data={"sender_role": "seeker", "sender_id": 1, "recipient_id": 2},
+        files={"file": ("photo.png", _PNG_1PX, "image/png")},
+    ).json()
+
+    r = client.get(f"/api/messages/{sent['id']}/attachment?role=employer&user_id=3")
+    assert r.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Delete conversation
+# ---------------------------------------------------------------------------
+
+
+def test_delete_conversation_hides_it_only_for_requester(client):
+    """
+    Given a conversation between a seeker and employer
+    When the seeker deletes the conversation
+    Then it disappears from the seeker's inbox but the employer still sees it
+    """
+    sent = _send(client, "seeker", 1, 2, "Hello").json()
+    convo_id = sent["conversation_id"]
+
+    r = client.delete(f"/api/conversations/{convo_id}?role=seeker&user_id=1")
+    assert r.status_code == 200
+
+    seeker_inbox = client.get("/api/conversations?role=seeker&user_id=1").json()
+    assert seeker_inbox == []
+
+    employer_inbox = client.get("/api/conversations?role=employer&user_id=2").json()
+    assert len(employer_inbox) == 1
+
+
+def test_deleted_conversation_reappears_on_new_message(client):
+    """
+    Given a seeker deleted a conversation from their inbox
+    When a new message arrives in that conversation
+    Then it reappears in the seeker's inbox too (matches WhatsApp/Telegram
+    "delete chat" behavior — it's not a permanent block)
+    """
+    sent = _send(client, "seeker", 1, 2, "Hello").json()
+    convo_id = sent["conversation_id"]
+    client.delete(f"/api/conversations/{convo_id}?role=seeker&user_id=1")
+    assert client.get("/api/conversations?role=seeker&user_id=1").json() == []
+
+    _send(client, "employer", 2, 1, "Following up")
+
+    seeker_inbox = client.get("/api/conversations?role=seeker&user_id=1").json()
+    assert len(seeker_inbox) == 1
+
+
+def test_cannot_delete_conversation_not_a_participant_in(client):
+    """
+    Given a conversation between seeker 1 and employer 2
+    When seeker 3 tries to delete it
+    Then I receive 403 Forbidden
+    """
+    sent = _send(client, "seeker", 1, 2, "Hello").json()
+    convo_id = sent["conversation_id"]
+    r = client.delete(f"/api/conversations/{convo_id}?role=seeker&user_id=3")
+    assert r.status_code == 403

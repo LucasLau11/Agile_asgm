@@ -154,6 +154,15 @@ class Conversation(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_message_at = Column(DateTime, default=datetime.utcnow)
 
+    # "Delete conversation" (US messaging enhancement): hides the thread
+    # from just that participant's inbox — the other party is unaffected,
+    # and nothing is actually deleted. Mirrors Message.deleted_for_* below.
+    # A new incoming/outgoing message un-hides it for both sides again
+    # (see routes/messages.py) since an active conversation reappearing on
+    # new activity matches how WhatsApp/Telegram "delete chat" behaves.
+    hidden_for_seeker = Column(Integer, nullable=False, default=0)
+    hidden_for_employer = Column(Integer, nullable=False, default=0)
+
     messages = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan",
         order_by="Message.created_at",
@@ -184,9 +193,10 @@ class Message(Base):
     deleted_for_seeker = Column(Integer, nullable=False, default=0)
     deleted_for_employer = Column(Integer, nullable=False, default=0)
 
-    # Attachment (image or document) — stored on disk like resumes,
-    # path/metadata kept here. Not currently encrypted (only the text body
-    # is); see message_crypto.py docstring for the encryption scope.
+    # Attachment (image or document) — encrypted on disk the same way the
+    # text body is (see services/message_crypto.py); served back out
+    # through GET /api/messages/{id}/attachment, which decrypts on the fly
+    # rather than being exposed via the static /uploads mount.
     attachment_filename = Column(String(255), nullable=True)
     attachment_url = Column(String(500), nullable=True)
     attachment_type = Column(String(20), nullable=True)  # "image" | "file"

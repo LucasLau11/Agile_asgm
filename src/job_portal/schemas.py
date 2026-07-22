@@ -527,7 +527,9 @@ class MessageOut(BaseModel):
             created_at=message.created_at,
             is_edited=message.edited_at is not None,
             is_deleted=bool(message.is_deleted),
-            attachment_url=(f"/{message.attachment_url}" if message.attachment_url else None),
+            attachment_url=(
+                f"/api/messages/{message.id}/attachment" if message.attachment_url else None
+            ),
             attachment_filename=message.attachment_filename,
             attachment_type=message.attachment_type,
         )

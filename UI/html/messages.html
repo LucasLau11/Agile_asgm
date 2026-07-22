@@ -61,11 +61,16 @@
 
     const EDIT_WINDOW_MINUTES = 15;
     const ALLOWED_ATTACHMENT_TYPES = ".jpg,.jpeg,.png,.gif,.webp,.pdf,.docx";
+    const THREAD_POLL_MS = 4000;
+    const LIST_POLL_MS = 8000;
 
     let conversations = [];
     let activeConversationId = null;
     let activeThread = null;
     let pendingFile = null; // file staged in the composer, awaiting send
+    let editingMessageId = null; // suppress poll re-renders while editing
+
+    // ---------- Topbar / dev bar ----------
 
     function renderTopbar() {
       const header = document.getElementById("topbarHeader");
@@ -130,11 +135,34 @@
               ${c.unread_count > 0 ? `<span class="unread-badge">${c.unread_count}</span>` : ""}
             </div>
           </div>
+          <button class="conversation-delete" data-id="${c.id}" title="Delete conversation">🗑</button>
         </div>
       `).join("");
 
       list.querySelectorAll(".conversation-item").forEach((el) => {
-        el.addEventListener("click", () => openConversation(Number(el.dataset.id)));
+        el.addEventListener("click", (e) => {
+          if (e.target.closest(".conversation-delete")) return;
+          openConversation(Number(el.dataset.id));
+        });
+      });
+      list.querySelectorAll(".conversation-delete").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const id = Number(btn.dataset.id);
+          if (!confirm("Delete this conversation from your inbox? The other person will still see it.")) return;
+          try {
+            await deleteConversation(id, role, userId);
+            if (id === activeConversationId) {
+              activeConversationId = null;
+              activeThread = null;
+              document.getElementById("chatPane").innerHTML =
+                `<div class="empty-chat-state">Select a conversation, or start a new one.</div>`;
+            }
+            await loadConversations();
+          } catch (err) {
+            alert(err.message);
+          }
+        });
       });
     }
 
@@ -153,9 +181,6 @@
     // ---------- Chat thread ----------
 
     function readReceiptIcon(m) {
-      // Only relevant for messages I sent — shows whether the other party
-      // has opened the conversation since. Single check = sent, double
-      // (highlighted) check = read, WhatsApp-style.
       return m.is_read
         ? `<span class="receipt read" title="Read">✓✓</span>`
         : `<span class="receipt sent" title="Sent">✓</span>`;
@@ -163,12 +188,13 @@
 
     function attachmentHtml(m) {
       if (!m.attachment_url) return "";
+      const authedUrl = attachmentUrlFor(m.attachment_url, role, userId);
       if (m.attachment_type === "image") {
-        return `<a href="${m.attachment_url}" target="_blank" rel="noopener">
-          <img class="attachment-image" src="${m.attachment_url}" alt="${escapeHtml(m.attachment_filename || "attachment")}" />
+        return `<a href="${authedUrl}" target="_blank" rel="noopener">
+          <img class="attachment-image" src="${authedUrl}" alt="${escapeHtml(m.attachment_filename || "attachment")}" />
         </a>`;
       }
-      return `<a class="attachment-file" href="${m.attachment_url}" target="_blank" rel="noopener">
+      return `<a class="attachment-file" href="${authedUrl}" target="_blank" rel="noopener">
         📄 ${escapeHtml(m.attachment_filename || "Download file")}
       </a>`;
     }
@@ -215,14 +241,41 @@
         </div>`;
     }
 
+    /** Renders just the message list — called on first open AND on every
+     * poll tick, so it deliberately never touches the composer (draft text,
+     * staged attachment) or anything outside #chatMessages. */
+    function renderMessagesInto(threadData, { preserveScroll = false } = {}) {
+      const container = document.getElementById("chatMessages");
+      if (!container) return;
+      const wasNearBottom = preserveScroll
+        ? container.scrollHeight - container.scrollTop - container.clientHeight < 80
+        : true;
+
+      container.innerHTML = threadData.messages.map(bubbleHtml).join("");
+      wireBubbleMenus();
+
+      if (wasNearBottom) container.scrollTop = container.scrollHeight;
+    }
+
+    function threadSignature(threadData) {
+      // Cheap way to detect "did anything actually change" before
+      // re-rendering on a poll tick, so we're not redrawing every 4s for
+      // no reason (and so open bubble menus don't keep getting slammed shut).
+      return JSON.stringify(
+        threadData.messages.map((m) => [m.id, m.body, m.is_read, m.is_deleted, m.is_edited, m.attachment_url])
+      );
+    }
+
     function renderChat(threadData) {
       activeThread = threadData;
       const pane = document.getElementById("chatPane");
-      const bubbles = threadData.messages.map(bubbleHtml).join("");
 
       pane.innerHTML = `
-        <div class="chat-pane-header">${escapeHtml(threadData.other_party_name)}</div>
-        <div class="chat-messages" id="chatMessages">${bubbles}</div>
+        <div class="chat-pane-header">
+          <span>${escapeHtml(threadData.other_party_name)}</span>
+          <button class="btn btn-secondary" id="deleteConvoBtn" type="button" title="Delete conversation">🗑 Delete chat</button>
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
         <div class="attachment-preview" id="attachmentPreview" style="display:none;"></div>
         <div class="chat-composer">
           <button class="btn btn-secondary attach-btn" id="attachBtn" type="button" title="Attach image or file">📎</button>
@@ -232,11 +285,22 @@
         </div>
       `;
 
-      const messagesEl = document.getElementById("chatMessages");
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-
-      wireBubbleMenus();
+      renderMessagesInto(threadData);
       wireComposer(threadData);
+
+      document.getElementById("deleteConvoBtn").addEventListener("click", async () => {
+        if (!confirm("Delete this conversation from your inbox? The other person will still see it.")) return;
+        try {
+          await deleteConversation(threadData.conversation_id, role, userId);
+          activeConversationId = null;
+          activeThread = null;
+          document.getElementById("chatPane").innerHTML =
+            `<div class="empty-chat-state">Select a conversation, or start a new one.</div>`;
+          await loadConversations();
+        } catch (err) {
+          alert(err.message);
+        }
+      });
     }
 
     function wireBubbleMenus() {
@@ -273,7 +337,7 @@
       try {
         await deleteMessage(messageId, role, userId, scope);
         await loadConversations();
-        await openConversation(activeConversationId);
+        await refreshActiveThread({ force: true });
       } catch (err) {
         alert(err.message);
       }
@@ -282,6 +346,7 @@
     function startEditingBubble(messageId) {
       const message = activeThread.messages.find((m) => m.id === messageId);
       if (!message) return;
+      editingMessageId = messageId;
       const row = document.querySelector(`.bubble-row[data-id="${messageId}"] .bubble`);
       if (!row) return;
 
@@ -292,14 +357,18 @@
           <button class="btn btn-primary" data-save-edit="${messageId}">Save</button>
         </div>
       `;
-      row.querySelector("[data-cancel-edit]").addEventListener("click", () => openConversation(activeConversationId));
+      row.querySelector("[data-cancel-edit]").addEventListener("click", () => {
+        editingMessageId = null;
+        refreshActiveThread({ force: true });
+      });
       row.querySelector("[data-save-edit]").addEventListener("click", async () => {
         const newBody = row.querySelector(".edit-textarea").value.trim();
         if (!newBody) return;
         try {
           await editMessage(messageId, role, userId, newBody);
+          editingMessageId = null;
           await loadConversations();
-          await openConversation(activeConversationId);
+          await refreshActiveThread({ force: true });
         } catch (err) {
           alert(err.message);
         }
@@ -353,7 +422,7 @@
           }
           input.value = "";
           await loadConversations();
-          await openConversation(threadData.conversation_id);
+          await refreshActiveThread({ force: true });
         } catch (err) {
           alert(err.message);
         } finally {
@@ -372,6 +441,7 @@
 
     async function openConversation(conversationId) {
       activeConversationId = conversationId;
+      editingMessageId = null;
       renderConversationList();
       try {
         const threadData = await fetchConversationMessages(conversationId, role, userId);
@@ -379,6 +449,26 @@
       } catch (err) {
         document.getElementById("chatPane").innerHTML =
           `<div class="empty-chat-state">${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    /** Live-update the open thread. Called on a timer (THREAD_POLL_MS) and
+     * right after actions that change the thread (send/edit/delete). Skips
+     * redrawing while the user is mid-edit, and only touches the messages
+     * list (never the composer), so an in-progress draft is never wiped. */
+    async function refreshActiveThread({ force = false } = {}) {
+      if (!activeConversationId) return;
+      if (editingMessageId && !force) return;
+      try {
+        const threadData = await fetchConversationMessages(activeConversationId, role, userId);
+        const changed = !activeThread || threadSignature(threadData) !== threadSignature(activeThread);
+        activeThread = threadData;
+        if (changed && !editingMessageId) {
+          renderMessagesInto(threadData, { preserveScroll: true });
+        }
+      } catch (_) {
+        // Conversation may have been deleted from under us, or a transient
+        // network hiccup — polling just tries again next tick.
       }
     }
 
@@ -431,7 +521,7 @@
       }
     });
 
-    // ---------- Init ----------
+    // ---------- Init + polling ----------
 
     async function init() {
       renderTopbar();
@@ -449,6 +539,9 @@
       } else if (conversations.length > 0) {
         openConversation(conversations[0].id);
       }
+
+      setInterval(refreshActiveThread, THREAD_POLL_MS);
+      setInterval(loadConversations, LIST_POLL_MS);
     }
 
     init();

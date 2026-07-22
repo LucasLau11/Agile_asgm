@@ -59,6 +59,20 @@ a { color: inherit; }
 .topbar nav a:hover { opacity: 1; text-decoration: underline; }
 .topbar nav a.active { opacity: 1; text-decoration: underline; }
 
+.nav-badge {
+  display: inline-block;
+  min-width: 16px;
+  padding: 1px 5px;
+  margin-left: 5px;
+  border-radius: 999px;
+  background: var(--danger, #d64545);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-align: center;
+  vertical-align: 2px;
+}
+
 .topbar-right {
   display: flex;
   align-items: center;

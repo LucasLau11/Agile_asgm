@@ -49,6 +49,13 @@ _ensure_columns(
         "attachment_type": "VARCHAR(20)",
     },
 )
+_ensure_columns(
+    "conversations",
+    {
+        "hidden_for_seeker": "INTEGER DEFAULT 0",
+        "hidden_for_employer": "INTEGER DEFAULT 0",
+    },
+)
 
 app.include_router(seeker_router)
 app.include_router(applications_router)  
