@@ -30,3 +30,33 @@ def sanitize_display_filename(filename: str | None) -> str:
         return "resume"
     cleaned = filename.replace("\\", "/").split("/")[-1]
     return cleaned[:255] or "resume"
+
+
+# ---------- Message attachments (images + documents) ----------
+
+_JPEG_MAGIC = b"\xff\xd8\xff"
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+_GIF_MAGICS = (b"GIF87a", b"GIF89a")
+
+MAX_MESSAGE_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+def detect_safe_message_attachment(contents: bytes) -> tuple[str, str] | None:
+    """Inspect actual file bytes (never trust the filename or claimed
+    content-type) and return (extension, kind) where kind is "image" or
+    "file", or None if the content doesn't match any allowed format.
+    Mirrors detect_safe_extension()'s approach, extended to image formats.
+    """
+    if contents.startswith(_JPEG_MAGIC):
+        return ".jpg", "image"
+    if contents.startswith(_PNG_MAGIC):
+        return ".png", "image"
+    if contents.startswith(_GIF_MAGICS):
+        return ".gif", "image"
+    if contents[:4] == b"RIFF" and contents[8:12] == b"WEBP":
+        return ".webp", "image"
+    if contents.startswith(_PDF_MAGIC):
+        return ".pdf", "file"
+    if contents.startswith(_ZIP_MAGIC):
+        return ".docx", "file"
+    return None

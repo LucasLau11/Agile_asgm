@@ -52,19 +52,20 @@
   <script src="../js/api.js"></script>
   <script>
     const params = new URLSearchParams(location.search);
-    // Which side of the conversation the current user is acting as. Defaults
-    // to seeker so a bare /UI/html/messages.html link still works.
     const role = params.get("role") === "employer" ? "employer" : "seeker";
     const otherRole = role === "seeker" ? "employer" : "seeker";
     const userId = role === "employer" ? getCurrentEmployerId() : getCurrentSeekerId();
 
-    // Optional deep-link params from "Message Employer" / "Message Seeker"
-    // buttons on job_detail.html / applicant_detail.html.
     const deepLinkOtherId = params.get("other") ? Number(params.get("other")) : null;
     const deepLinkJobId = params.get("job") ? Number(params.get("job")) : null;
 
+    const EDIT_WINDOW_MINUTES = 15;
+    const ALLOWED_ATTACHMENT_TYPES = ".jpg,.jpeg,.png,.gif,.webp,.pdf,.docx";
+
     let conversations = [];
     let activeConversationId = null;
+    let activeThread = null;
+    let pendingFile = null; // file staged in the composer, awaiting send
 
     function renderTopbar() {
       const header = document.getElementById("topbarHeader");
@@ -108,6 +109,8 @@
       return (name || "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
     }
 
+    // ---------- Conversation list ----------
+
     function renderConversationList() {
       const list = document.getElementById("conversationList");
       if (conversations.length === 0) {
@@ -147,24 +150,83 @@
       }
     }
 
-    function renderChat(threadData) {
-      const pane = document.getElementById("chatPane");
-      const bubbles = threadData.messages.map((m) => {
-        const mine = m.sender_role === role;
+    // ---------- Chat thread ----------
+
+    function readReceiptIcon(m) {
+      // Only relevant for messages I sent — shows whether the other party
+      // has opened the conversation since. Single check = sent, double
+      // (highlighted) check = read, WhatsApp-style.
+      return m.is_read
+        ? `<span class="receipt read" title="Read">✓✓</span>`
+        : `<span class="receipt sent" title="Sent">✓</span>`;
+    }
+
+    function attachmentHtml(m) {
+      if (!m.attachment_url) return "";
+      if (m.attachment_type === "image") {
+        return `<a href="${m.attachment_url}" target="_blank" rel="noopener">
+          <img class="attachment-image" src="${m.attachment_url}" alt="${escapeHtml(m.attachment_filename || "attachment")}" />
+        </a>`;
+      }
+      return `<a class="attachment-file" href="${m.attachment_url}" target="_blank" rel="noopener">
+        📄 ${escapeHtml(m.attachment_filename || "Download file")}
+      </a>`;
+    }
+
+    function canEdit(m, mine) {
+      if (!mine || m.is_deleted) return false;
+      const ageMinutes = (Date.now() - new Date(m.created_at.endsWith("Z") ? m.created_at : m.created_at + "Z").getTime()) / 60000;
+      return ageMinutes <= EDIT_WINDOW_MINUTES;
+    }
+
+    function bubbleHtml(m) {
+      const mine = m.sender_role === role;
+      if (m.is_deleted) {
         return `
-          <div class="bubble-row ${mine ? "mine" : ""}">
-            <div class="bubble">
-              ${m.job_title ? `<span class="job-tag">Re: ${escapeHtml(m.job_title)}</span>` : ""}
-              ${escapeHtml(m.body)}
-              <span class="time">${timeAgo(m.created_at)}</span>
+          <div class="bubble-row ${mine ? "mine" : ""}" data-id="${m.id}">
+            <div class="bubble deleted-bubble">
+              <em>This message was deleted</em>
+              <span class="time">${formatMessageDateTime(m.created_at)}</span>
             </div>
           </div>`;
-      }).join("");
+      }
+
+      const actions = [];
+      if (canEdit(m, mine)) actions.push(`<button class="bubble-action" data-action="edit" data-id="${m.id}">Edit</button>`);
+      if (mine) actions.push(`<button class="bubble-action" data-action="delete-everyone" data-id="${m.id}">Delete for everyone</button>`);
+      actions.push(`<button class="bubble-action" data-action="delete-me" data-id="${m.id}">Delete for me</button>`);
+
+      return `
+        <div class="bubble-row ${mine ? "mine" : ""}" data-id="${m.id}">
+          <div class="bubble">
+            ${m.job_title ? `<span class="job-tag">Re: ${escapeHtml(m.job_title)}</span>` : ""}
+            ${attachmentHtml(m)}
+            ${m.body ? `<span class="bubble-text">${escapeHtml(m.body)}</span>` : ""}
+            <span class="time">
+              ${formatMessageDateTime(m.created_at)}
+              ${m.is_edited ? `<span class="edited-tag">(edited)</span>` : ""}
+              ${mine ? readReceiptIcon(m) : ""}
+            </span>
+            <div class="bubble-menu-wrap">
+              <button class="bubble-menu-toggle" data-id="${m.id}" title="Message actions">⋮</button>
+              <div class="bubble-menu" id="menu-${m.id}" style="display:none;">${actions.join("")}</div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function renderChat(threadData) {
+      activeThread = threadData;
+      const pane = document.getElementById("chatPane");
+      const bubbles = threadData.messages.map(bubbleHtml).join("");
 
       pane.innerHTML = `
         <div class="chat-pane-header">${escapeHtml(threadData.other_party_name)}</div>
         <div class="chat-messages" id="chatMessages">${bubbles}</div>
+        <div class="attachment-preview" id="attachmentPreview" style="display:none;"></div>
         <div class="chat-composer">
+          <button class="btn btn-secondary attach-btn" id="attachBtn" type="button" title="Attach image or file">📎</button>
+          <input type="file" id="attachInput" accept="${ALLOWED_ATTACHMENT_TYPES}" style="display:none;" />
           <textarea id="composerInput" placeholder="Type a message…"></textarea>
           <button class="btn btn-primary" id="composerSend" type="button">Send</button>
         </div>
@@ -173,20 +235,122 @@
       const messagesEl = document.getElementById("chatMessages");
       messagesEl.scrollTop = messagesEl.scrollHeight;
 
+      wireBubbleMenus();
+      wireComposer(threadData);
+    }
+
+    function wireBubbleMenus() {
+      document.querySelectorAll(".bubble-menu-toggle").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const menu = document.getElementById(`menu-${btn.dataset.id}`);
+          const isOpen = menu.style.display === "block";
+          document.querySelectorAll(".bubble-menu").forEach((m) => (m.style.display = "none"));
+          menu.style.display = isOpen ? "none" : "block";
+        });
+      });
+      document.addEventListener("click", () => {
+        document.querySelectorAll(".bubble-menu").forEach((m) => (m.style.display = "none"));
+      }, { once: true });
+
+      document.querySelectorAll(".bubble-action").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const id = Number(btn.dataset.id);
+          const action = btn.dataset.action;
+          if (action === "edit") startEditingBubble(id);
+          if (action === "delete-me") await handleDelete(id, "me");
+          if (action === "delete-everyone") {
+            if (confirm("Delete this message for everyone? This can't be undone.")) {
+              await handleDelete(id, "everyone");
+            }
+          }
+        });
+      });
+    }
+
+    async function handleDelete(messageId, scope) {
+      try {
+        await deleteMessage(messageId, role, userId, scope);
+        await loadConversations();
+        await openConversation(activeConversationId);
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    function startEditingBubble(messageId) {
+      const message = activeThread.messages.find((m) => m.id === messageId);
+      if (!message) return;
+      const row = document.querySelector(`.bubble-row[data-id="${messageId}"] .bubble`);
+      if (!row) return;
+
+      row.innerHTML = `
+        <textarea class="edit-textarea">${escapeHtml(message.body)}</textarea>
+        <div class="edit-actions">
+          <button class="btn btn-secondary" data-cancel-edit>Cancel</button>
+          <button class="btn btn-primary" data-save-edit="${messageId}">Save</button>
+        </div>
+      `;
+      row.querySelector("[data-cancel-edit]").addEventListener("click", () => openConversation(activeConversationId));
+      row.querySelector("[data-save-edit]").addEventListener("click", async () => {
+        const newBody = row.querySelector(".edit-textarea").value.trim();
+        if (!newBody) return;
+        try {
+          await editMessage(messageId, role, userId, newBody);
+          await loadConversations();
+          await openConversation(activeConversationId);
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+    }
+
+    function wireComposer(threadData) {
       const input = document.getElementById("composerInput");
       const sendBtn = document.getElementById("composerSend");
+      const attachBtn = document.getElementById("attachBtn");
+      const attachInput = document.getElementById("attachInput");
+      const preview = document.getElementById("attachmentPreview");
+
+      attachBtn.addEventListener("click", () => attachInput.click());
+      attachInput.addEventListener("change", () => {
+        pendingFile = attachInput.files[0] || null;
+        if (pendingFile) {
+          preview.style.display = "flex";
+          preview.innerHTML = `📎 ${escapeHtml(pendingFile.name)} <button type="button" id="clearAttachment">✕</button>`;
+          document.getElementById("clearAttachment").addEventListener("click", () => {
+            pendingFile = null;
+            attachInput.value = "";
+            preview.style.display = "none";
+          });
+        }
+      });
 
       async function doSend() {
-        const body = input.value.trim();
-        if (!body) return;
+        const bodyText = input.value.trim();
+        if (!bodyText && !pendingFile) return;
         sendBtn.disabled = true;
         try {
-          await sendMessage({
-            senderRole: role,
-            senderId: userId,
-            recipientId: threadData.other_party_id,
-            body,
-          });
+          if (pendingFile) {
+            await sendMessageWithAttachment({
+              senderRole: role,
+              senderId: userId,
+              recipientId: threadData.other_party_id,
+              body: bodyText,
+              file: pendingFile,
+            });
+            pendingFile = null;
+            attachInput.value = "";
+            preview.style.display = "none";
+          } else {
+            await sendMessage({
+              senderRole: role,
+              senderId: userId,
+              recipientId: threadData.other_party_id,
+              body: bodyText,
+            });
+          }
           input.value = "";
           await loadConversations();
           await openConversation(threadData.conversation_id);
@@ -275,9 +439,6 @@
       await loadConversations();
 
       if (deepLinkOtherId) {
-        // Deep-linked from "Message Employer" / "Message Seeker" — jump
-        // straight into that thread (creating it if it doesn't exist yet)
-        // rather than making the user find it in the list.
         try {
           const { conversation_id } = await findOrCreateConversation(role, userId, deepLinkOtherId);
           await loadConversations();

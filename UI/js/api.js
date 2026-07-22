@@ -365,16 +365,49 @@ function sendMessage({ senderRole, senderId, recipientId, body, jobId = null }) 
   });
 }
 
-/** Finds (or silently creates) the conversation with `otherId` and returns
- * its id, without posting a message — used by the contextual "Message
- * Employer" / "Message Seeker" buttons to jump straight into a thread. */
+/** Sends a message with an image/file attachment (US messaging enhancement).
+ * Caption is optional — a bare attachment is a valid message. */
+async function sendMessageWithAttachment({ senderRole, senderId, recipientId, body = "", jobId = null, file }) {
+  const form = new FormData();
+  form.append("sender_role", senderRole);
+  form.append("sender_id", senderId);
+  form.append("recipient_id", recipientId);
+  form.append("body", body);
+  if (jobId != null) form.append("job_id", jobId);
+  form.append("file", file);
+
+  const res = await fetch(`/api/messages/attachment`, { method: "POST", body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
+/** Edit a message's text — sender-only, time-limited window (enforced server-side). */
+function editMessage(messageId, role, userId, body) {
+  return apiFetch(`/api/messages/${messageId}?role=${role}&user_id=${userId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+}
+
+/** Delete a message. scope="me" hides it just for the requester;
+ * scope="everyone" is sender-only and replaces it with a placeholder for both. */
+function deleteMessage(messageId, role, userId, scope) {
+  return apiFetch(`/api/messages/${messageId}?role=${role}&user_id=${userId}&scope=${scope}`, {
+    method: "DELETE",
+  });
+}
+
+/** Used by the contextual "Message Employer" / "Message Seeker" buttons. */
 function findOrCreateConversation(role, userId, otherId) {
   const params = new URLSearchParams({ role, user_id: userId, other_id: otherId });
   return apiFetch(`/api/conversations/find-or-create?${params.toString()}`, { method: "POST" });
 }
 
-/** Rough "x minutes/hours ago" formatting for message/conversation timestamps
- * (client-side counterpart to the backend's _humanize() in applications.py). */
+/** Rough "x minutes/hours ago" formatting — used in the conversation list preview. */
 function timeAgo(isoString) {
   if (!isoString) return "";
   const then = new Date(isoString.endsWith("Z") ? isoString : isoString + "Z");
@@ -384,4 +417,18 @@ function timeAgo(isoString) {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   const days = Math.floor(seconds / 86400);
   return days === 1 ? "Yesterday" : `${days}d ago`;
+}
+
+/** Absolute sent-date formatting for chat bubbles (e.g. "9:14 AM" for
+ * today, "21 Jul, 9:14 AM" otherwise) — chat apps show clock time inside
+ * a thread and reserve relative "x ago" phrasing for the inbox list. */
+function formatMessageDateTime(isoString) {
+  if (!isoString) return "";
+  const then = new Date(isoString.endsWith("Z") ? isoString : isoString + "Z");
+  const now = new Date();
+  const timePart = then.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const isToday = then.toDateString() === now.toDateString();
+  if (isToday) return timePart;
+  const datePart = then.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return `${datePart}, ${timePart}`;
 }

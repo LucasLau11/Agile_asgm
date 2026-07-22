@@ -447,6 +447,15 @@ class EducationSuggestion(BaseModel):
 # ---------- Messaging (US-40 / US-41 / US-42 / US-43) ----------
 
 
+def _validate_message_body(value: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        raise ValueError("Message cannot be empty.")
+    if len(value) > 4000:
+        raise ValueError("Message is too long (max 4000 characters).")
+    return value
+
+
 class MessageCreate(BaseModel):
     """Body for POST /api/messages.
 
@@ -466,10 +475,19 @@ class MessageCreate(BaseModel):
     @field_validator("body")
     @classmethod
     def _body_not_blank(cls, value: str) -> str:
-        value = (value or "").strip()
-        if not value:
-            raise ValueError("Message cannot be empty.")
-        return value
+        return _validate_message_body(value)
+
+
+class MessageEdit(BaseModel):
+    """Body for PUT /api/messages/{id} — editing is time-limited (see
+    EDIT_WINDOW_MINUTES in routes/messages.py) and sender-only."""
+
+    body: str = Field(..., min_length=1, max_length=4000)
+
+    @field_validator("body")
+    @classmethod
+    def _body_not_blank(cls, value: str) -> str:
+        return _validate_message_body(value)
 
 
 class MessageOut(BaseModel):
@@ -484,19 +502,34 @@ class MessageOut(BaseModel):
     job_title: Optional[str] = None
     is_read: bool
     created_at: datetime
+    is_edited: bool = False
+    is_deleted: bool = False
+    attachment_url: Optional[str] = None
+    attachment_filename: Optional[str] = None
+    attachment_type: Optional[str] = None
 
     @classmethod
-    def from_message(cls, message) -> "MessageOut":
+    def from_message(cls, message, body: str) -> "MessageOut":
+        """`body` is passed explicitly (already decrypted, and possibly
+        replaced with a "This message was deleted" placeholder) rather than
+        read off message.body directly, so this schema stays decoupled
+        from the encryption layer — see routes/messages.py's _message_out().
+        """
         return cls(
             id=message.id,
             conversation_id=message.conversation_id,
             sender_role=message.sender_role,
             sender_id=message.sender_id,
-            body=message.body,
+            body=body,
             job_id=message.job_id,
             job_title=message.job.title if message.job else None,
             is_read=bool(message.is_read),
             created_at=message.created_at,
+            is_edited=message.edited_at is not None,
+            is_deleted=bool(message.is_deleted),
+            attachment_url=(f"/{message.attachment_url}" if message.attachment_url else None),
+            attachment_filename=message.attachment_filename,
+            attachment_type=message.attachment_type,
         )
 
 

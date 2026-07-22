@@ -167,12 +167,29 @@ class Message(Base):
     conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False, index=True)
     sender_role = Column(String(10), nullable=False)  # "seeker" | "employer"
     sender_id = Column(Integer, nullable=False, index=True)
-    body = Column(Text, nullable=False, default="")
+    body = Column(Text, nullable=False, default="")  # stored encrypted — see services/message_crypto.py
     # Optional "regarding this job" tag on an individual message — not
     # required, since US-40/41 allow general conversation too.
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True, index=True)
     is_read = Column(Integer, nullable=False, default=0)  # 0 = unread, 1 = read
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Edit (time-limited, enforced in the route layer)
+    edited_at = Column(DateTime, nullable=True)
+
+    # Delete: "for everyone" clears content and is visible-as-deleted to
+    # both parties; "for me" only hides the row for that one participant's
+    # own view — the other party is unaffected.
+    is_deleted = Column(Integer, nullable=False, default=0)
+    deleted_for_seeker = Column(Integer, nullable=False, default=0)
+    deleted_for_employer = Column(Integer, nullable=False, default=0)
+
+    # Attachment (image or document) — stored on disk like resumes,
+    # path/metadata kept here. Not currently encrypted (only the text body
+    # is); see message_crypto.py docstring for the encryption scope.
+    attachment_filename = Column(String(255), nullable=True)
+    attachment_url = Column(String(500), nullable=True)
+    attachment_type = Column(String(20), nullable=True)  # "image" | "file"
 
     conversation = relationship("Conversation", back_populates="messages")
     job = relationship("Job")
