@@ -581,6 +581,8 @@ class ConversationOut(BaseModel):
     last_message_preview: str
     last_message_at: Optional[datetime] = None
     unread_count: int = 0
+    is_blocked: bool = False
+    blocked_by_me: bool = False
 
 
 class ParsedResumeOut(BaseModel):

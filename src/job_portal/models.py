@@ -163,6 +163,12 @@ class Conversation(Base):
     hidden_for_seeker = Column(Integer, nullable=False, default=0)
     hidden_for_employer = Column(Integer, nullable=False, default=0)
 
+    # Blocking is deliberately stored on the one persistent conversation for
+    # this seeker/employer pair. Either participant may block the other; while
+    # either flag is set, no new communication can be sent in either direction.
+    blocked_by_seeker = Column(Integer, nullable=False, default=0)
+    blocked_by_employer = Column(Integer, nullable=False, default=0)
+
     messages = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan",
         order_by="Message.created_at",

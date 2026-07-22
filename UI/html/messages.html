@@ -367,10 +367,17 @@
     function renderChat(threadData) {
       activeThread = threadData;
       const pane = document.getElementById("chatPane");
+      const blockedNotice = threadData.blocked_by_me
+        ? "You blocked this user. Unblock them to resume messaging."
+        : "Messaging is unavailable because this conversation has been blocked.";
+      const blockControl = threadData.blocked_by_me
+        ? `<button class="btn btn-secondary" id="unblockConvoBtn" type="button">Unblock user</button>`
+        : `<button class="btn btn-danger" id="blockConvoBtn" type="button">Block user</button>`;
 
       pane.innerHTML = `
         <div class="chat-pane-header">
           <span>${escapeHtml(threadData.other_party_name)}</span>
+          ${blockControl}
           <button class="btn btn-secondary" id="deleteConvoBtn" type="button" title="Delete conversation">🗑 Delete chat</button>
         </div>
         <div class="chat-messages" id="chatMessages"></div>
@@ -387,9 +394,44 @@
       renderMessagesInto(threadData);
       wireComposer(threadData);
 
+      if (threadData.is_blocked) {
+        document.getElementById("chatPane").insertAdjacentHTML(
+          "beforeend", `<div class="blocked-notice">${escapeHtml(blockedNotice)}</div>`
+        );
+        document.querySelectorAll("#chatPane .chat-composer button, #chatPane .chat-composer textarea").forEach((el) => {
+          el.disabled = true;
+        });
+      }
+
       if (role === "employer") {
         document.getElementById("interviewBtn").addEventListener("click", () => {
           openInterviewModal(threadData.other_party_id);
+        });
+      }
+
+      const blockButton = document.getElementById("blockConvoBtn");
+      const unblockButton = document.getElementById("unblockConvoBtn");
+      if (blockButton) {
+        blockButton.addEventListener("click", async () => {
+          if (!confirm(`Block ${threadData.other_party_name}? Neither of you will be able to send new messages until you unblock them.`)) return;
+          try {
+            await blockConversation(threadData.conversation_id, role, userId);
+            await loadConversations();
+            await refreshActiveThread({ force: true });
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+      }
+      if (unblockButton) {
+        unblockButton.addEventListener("click", async () => {
+          try {
+            await unblockConversation(threadData.conversation_id, role, userId);
+            await loadConversations();
+            await refreshActiveThread({ force: true });
+          } catch (err) {
+            alert(err.message);
+          }
         });
       }
 
@@ -613,8 +655,16 @@
       try {
         const threadData = await fetchConversationMessages(activeConversationId, role, userId);
         const changed = !activeThread || threadSignature(threadData) !== threadSignature(activeThread);
+        const blockStateChanged = !activeThread
+          || threadData.is_blocked !== activeThread.is_blocked
+          || threadData.blocked_by_me !== activeThread.blocked_by_me;
         activeThread = threadData;
-        if (changed && !editingMessageId) {
+        // Block state changes affect the header and composer, not just the
+        // message list. Re-render the full chat immediately after block /
+        // unblock (or when a poll notices the other participant blocked us).
+        if ((force || blockStateChanged) && !editingMessageId) {
+          renderChat(threadData);
+        } else if (changed && !editingMessageId) {
           renderMessagesInto(threadData, { preserveScroll: true });
         }
       } catch (_) {

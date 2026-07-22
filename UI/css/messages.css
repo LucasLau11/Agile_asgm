@@ -114,6 +114,19 @@
   padding: 16px;
   border-bottom: 1px solid var(--line);
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-pane-header > span { margin-right: auto; }
+
+.blocked-notice {
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-soft);
+  background: #fff5f5;
+  text-align: center;
 }
 
 .chat-messages {

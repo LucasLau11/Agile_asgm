@@ -538,3 +538,17 @@ function _startMessagesNavBadgePolling() {
 if (typeof document !== "undefined") {
   document.addEventListener("DOMContentLoaded", _startMessagesNavBadgePolling);
 }
+
+/** Blocks the other participant. Blocking is enforced by the API for both
+ * directions, so it also applies to messages sent from contextual pages. */
+function blockConversation(conversationId, role, userId) {
+  return apiFetch(`/api/conversations/${conversationId}/block?role=${role}&user_id=${userId}`, {
+    method: "POST",
+  });
+}
+
+function unblockConversation(conversationId, role, userId) {
+  return apiFetch(`/api/conversations/${conversationId}/block?role=${role}&user_id=${userId}`, {
+    method: "DELETE",
+  });
+}

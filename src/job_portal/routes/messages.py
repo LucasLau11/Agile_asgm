@@ -134,6 +134,25 @@ def _unhide_for_both(convo: Conversation) -> None:
     convo.hidden_for_employer = 0
 
 
+def _is_blocked(convo: Conversation) -> bool:
+    return bool(convo.blocked_by_seeker or convo.blocked_by_employer)
+
+
+def _require_unblocked(convo: Conversation) -> None:
+    if _is_blocked(convo):
+        raise HTTPException(
+            status_code=403,
+            detail="Messages are unavailable because this conversation has been blocked.",
+        )
+
+
+def _block_status(convo: Conversation, role: str) -> dict:
+    blocked_by_me = (
+        bool(convo.blocked_by_seeker) if role == "seeker" else bool(convo.blocked_by_employer)
+    )
+    return {"is_blocked": _is_blocked(convo), "blocked_by_me": blocked_by_me}
+
+
 # ---------- Send (text) ----------
 
 
@@ -149,6 +168,7 @@ async def api_send_message(body: MessageCreate, db: Session = Depends(get_db)):
         seeker_id, employer_id = body.recipient_id, body.sender_id
 
     convo = _get_or_create_conversation(db, seeker_id, employer_id)
+    _require_unblocked(convo)
     _unhide_for_both(convo)
 
     message = Message(
@@ -208,6 +228,7 @@ async def api_send_message_with_attachment(
     else:
         seeker_id, employer_id = recipient_id, sender_id
     convo = _get_or_create_conversation(db, seeker_id, employer_id)
+    _require_unblocked(convo)
     _unhide_for_both(convo)
 
     message = Message(
@@ -329,6 +350,7 @@ async def api_send_interview_invite(
     Accept/Decline action for the seeker (see api_respond_to_interview)."""
 
     convo = _get_or_create_conversation(db, seeker_id, employer_id)
+    _require_unblocked(convo)
     _unhide_for_both(convo)
 
     message = Message(
@@ -383,6 +405,7 @@ async def api_respond_to_interview(
         raise HTTPException(status_code=404, detail="Interview invitation not found.")
 
     _require_participant(message.conversation, "seeker", user_id)
+    _require_unblocked(message.conversation)
     if message.sender_role != "employer":
         raise HTTPException(status_code=403, detail="Not the recipient of this invitation.")
 
@@ -419,6 +442,7 @@ async def api_reschedule_interview(
         raise HTTPException(status_code=404, detail="Interview invitation not found.")
 
     _require_participant(message.conversation, "employer", employer_id)
+    _require_unblocked(message.conversation)
     if message.sender_role != "employer" or message.sender_id != employer_id:
         raise HTTPException(status_code=403, detail="Only the sender can reschedule this invitation.")
 
@@ -462,6 +486,7 @@ async def api_cancel_interview(
         raise HTTPException(status_code=404, detail="Interview invitation not found.")
 
     _require_participant(message.conversation, "employer", employer_id)
+    _require_unblocked(message.conversation)
     if message.sender_role != "employer" or message.sender_id != employer_id:
         raise HTTPException(status_code=403, detail="Only the sender can cancel this invitation.")
 
@@ -536,6 +561,49 @@ async def api_delete_message(
 # ---------- Delete / hide conversation ----------
 
 
+@router.post("/api/conversations/{conversation_id}/block")
+async def api_block_conversation_participant(
+    conversation_id: int,
+    role: str = Query(..., pattern="^(seeker|employer)$"),
+    user_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Block the other participant from this conversation. History remains
+    readable, but neither participant can send new messages until the person
+    who set the block removes it."""
+
+    convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not convo:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    _require_participant(convo, role, user_id)
+
+    column = "blocked_by_seeker" if role == "seeker" else "blocked_by_employer"
+    setattr(convo, column, 1)
+    db.commit()
+    return JSONResponse(content={"success": True, **_block_status(convo, role)})
+
+
+@router.delete("/api/conversations/{conversation_id}/block")
+async def api_unblock_conversation_participant(
+    conversation_id: int,
+    role: str = Query(..., pattern="^(seeker|employer)$"),
+    user_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Remove the requester's own block. A block set by the other party,
+    if any, remains in force."""
+
+    convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not convo:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    _require_participant(convo, role, user_id)
+
+    column = "blocked_by_seeker" if role == "seeker" else "blocked_by_employer"
+    setattr(convo, column, 0)
+    db.commit()
+    return JSONResponse(content={"success": True, **_block_status(convo, role)})
+
+
 @router.delete("/api/conversations/{conversation_id}")
 async def api_delete_conversation(
     conversation_id: int,
@@ -597,6 +665,7 @@ async def api_list_conversations(
                 last_message_preview=_preview_for(last_msg) if last_msg else "",
                 last_message_at=(last_msg.created_at if last_msg else convo.last_message_at),
                 unread_count=unread_count,
+                **_block_status(convo, role),
             ).model_dump(mode="json")
         )
 
@@ -640,6 +709,7 @@ async def api_get_conversation_messages(
             "other_party_id": other_id,
             "other_party_name": _other_party_name(other_role, other_id, db),
             "messages": [_message_out(m) for m in visible],
+            **_block_status(convo, role),
         }
     )
 
@@ -662,6 +732,7 @@ async def api_find_or_create_conversation(
         seeker_id, employer_id = other_id, user_id
 
     convo = _get_or_create_conversation(db, seeker_id, employer_id)
+    _require_unblocked(convo)
     db.commit()
 
     return JSONResponse(content={"conversation_id": convo.id})

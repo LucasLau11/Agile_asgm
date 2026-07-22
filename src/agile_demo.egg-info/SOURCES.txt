@@ -13,12 +13,15 @@ src/job_portal/models.py
 src/job_portal/schemas.py
 src/job_portal/routes/applications.py
 src/job_portal/routes/employer.py
+src/job_portal/routes/messages.py
 src/job_portal/routes/seeker.py
 src/job_portal/services/__init__.py
 src/job_portal/services/credibility.py
 src/job_portal/services/file_validation.py
+src/job_portal/services/message_crypto.py
 src/job_portal/services/resume_parser.py
 tests/test_acceptance_items.py
 tests/test_app.py
 tests/test_employer.py
+tests/test_messages.py
 tests/test_seeker.py
