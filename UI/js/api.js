@@ -195,14 +195,13 @@ async function apiFetch(path, options = {}) {
   return res.json();
 }
 
-function fetchJobs({ keyword = "", location = "", state = "", jobType = "", salaryMin = "", salaryMax = "" } = {}) {
+function fetchJobs({ keyword = "", location = "", state = "", jobType = "", salaryMin = "" } = {}) {
   const params = new URLSearchParams();
   if (keyword) params.set("keyword", keyword);
   if (location) params.set("location", location);
   if (state) params.set("state", state);
   if (jobType) params.set("job_type", jobType);
   if (salaryMin) params.set("salary_min", salaryMin);
-  if (salaryMax) params.set("salary_max", salaryMax);
   const query = params.toString();
   return apiFetch(`/api/jobs${query ? `?${query}` : ""}`);
 }
@@ -211,8 +210,9 @@ function fetchRecommendedJobs(seekerId) {
   return apiFetch(`/api/jobs/recommended?seeker_id=${seekerId}`);
 }
 
-function fetchJob(jobId) {
-  return apiFetch(`/api/jobs/${jobId}`);
+function fetchJob(jobId, seekerId) {
+  const query = seekerId ? `?seeker_id=${seekerId}` : "";
+  return apiFetch(`/api/jobs/${jobId}${query}`);
 }
 
 function fetchSeekerProfile(seekerId) {

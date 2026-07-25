@@ -257,32 +257,34 @@ def test_filter_by_job_type(client, db_session):
     assert r.json()[0]["title"] == "Intern role"
 
 
-def test_filter_by_salary_range_overlap(client, db_session):
+def test_filter_by_salary_min_includes_jobs_at_or_above(client, db_session):
     """
-    Advanced filter: salary range uses overlap logic, not strict containment
+    US-14: Filter jobs by salary range
 
-    Given a job paying RM4000-6000
-    When I search for salary_min=5000&salary_max=8000 (only partially overlapping)
-    Then the job still shows up, because part of its range fits what I want
+    A max-salary filter was considered and deliberately dropped: filtering
+    OUT higher-paying jobs works against the seeker's interest in the
+    common case, so only a minimum floor is offered.
+
+    Given a job paying RM4000+
+    When I search for salary_min=3000
+    Then the job shows up, since its minimum meets the floor I asked for
     """
     db_session.add(
-        Job(employer_id=1, title="Overlapping job", description="x" * 60,
+        Job(employer_id=1, title="Well-paid job", description="x" * 60,
             salary_min=4000, salary_max=6000, status="open")
     )
     db_session.commit()
 
-    r = client.get("/api/jobs?salary_min=5000&salary_max=8000")
+    r = client.get("/api/jobs?salary_min=3000")
     assert r.status_code == 200
     assert len(r.json()) == 1
 
 
-def test_filter_by_salary_range_excludes_non_overlapping(client, db_session):
+def test_filter_by_salary_min_excludes_jobs_below(client, db_session):
     """
-    Advanced filter: salary range excludes jobs with no overlap at all
-
     Given a job paying RM1500-2200 (an internship stipend)
-    When I search for salary_min=5000&salary_max=8000
-    Then that job is excluded
+    When I search for salary_min=3000
+    Then the job is excluded — its minimum falls below what I asked for
     """
     db_session.add(
         Job(employer_id=1, title="Low paying job", description="x" * 60,
@@ -290,9 +292,44 @@ def test_filter_by_salary_range_excludes_non_overlapping(client, db_session):
     )
     db_session.commit()
 
-    r = client.get("/api/jobs?salary_min=5000&salary_max=8000")
+    r = client.get("/api/jobs?salary_min=3000")
     assert r.status_code == 200
     assert r.json() == []
+
+
+def test_filter_by_salary_min_excludes_unspecified_salary(client, db_session):
+    """
+    Given a job with no salary specified at all
+    When I apply a salary_min filter
+    Then that job is excluded — its salary can't be verified to meet the
+    filter, so it's not assumed to pass
+    """
+    db_session.add(
+        Job(employer_id=1, title="No salary listed", description="x" * 60,
+            salary_min=None, salary_max=None, status="open")
+    )
+    db_session.commit()
+
+    r = client.get("/api/jobs?salary_min=3000")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_no_salary_filter_still_shows_unspecified_salary_jobs(client, db_session):
+    """
+    Given a job with no salary specified
+    When I browse WITHOUT any salary filter applied
+    Then the job still shows up — only an active filter excludes it
+    """
+    db_session.add(
+        Job(employer_id=1, title="No salary listed", description="x" * 60,
+            salary_min=None, salary_max=None, status="open")
+    )
+    db_session.commit()
+
+    r = client.get("/api/jobs")
+    assert r.status_code == 200
+    assert len(r.json()) == 1
 
 
 def test_positions_remaining_computed_correctly(client, db_session):
