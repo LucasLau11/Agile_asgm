@@ -325,6 +325,22 @@ function deleteEmployerJob(employerId, jobId) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Notifications (notifications.html, employer_notifications.html)
+// ---------------------------------------------------------------------------
+
+function deleteNotification(notificationId, role, userId) {
+  return apiFetch(`/api/notifications/${notificationId}?role=${role}&user_id=${userId}`, {
+    method: "DELETE",
+  });
+}
+
+function clearAllNotifications(role, userId) {
+  return apiFetch(`/api/notifications?role=${role}&user_id=${userId}`, {
+    method: "DELETE",
+  });
+}
+
 function trustSealHtml(score) {
   const safeScore = score == null ? "—" : score;
   const lowClass = score != null && score < 50 ? "low" : "";
@@ -413,6 +429,47 @@ function findOrCreateConversation(role, userId, otherId) {
 function deleteConversation(conversationId, role, userId) {
   return apiFetch(`/api/conversations/${conversationId}?role=${role}&user_id=${userId}`, {
     method: "DELETE",
+  });
+}
+
+// ---- US-46/47: interview invitations ----
+
+/** US-46: employer sends a structured interview invite (date/time,
+ * duration, mode, location/link, notes) instead of a plain text message.
+ * details = { scheduled_at (ISO string), duration_minutes, mode, location_or_link, notes } */
+function sendInterviewInvite(employerId, seekerId, jobId, details) {
+  const params = new URLSearchParams({ employer_id: employerId, seeker_id: seekerId });
+  if (jobId != null) params.set("job_id", jobId);
+  return apiFetch(`/api/messages/interview-invite?${params.toString()}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(details),
+  });
+}
+
+/** US-47: seeker accepts or declines. response must be "accepted" or "declined". */
+function respondToInterview(messageId, userId, response) {
+  return apiFetch(`/api/messages/${messageId}/interview-response?user_id=${userId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ response }),
+  });
+}
+
+/** US-XX: employer reschedules an interview they sent — same shape as
+ * sendInterviewInvite's details. Resets status to "pending" server-side. */
+function rescheduleInterview(messageId, employerId, details) {
+  return apiFetch(`/api/messages/${messageId}/interview-reschedule?employer_id=${employerId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(details),
+  });
+}
+
+/** US-XX: employer cancels an interview they sent. */
+function cancelInterview(messageId, employerId) {
+  return apiFetch(`/api/messages/${messageId}/interview-cancel?employer_id=${employerId}`, {
+    method: "POST",
   });
 }
 

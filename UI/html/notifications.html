@@ -29,6 +29,8 @@
     <h1>Notifications</h1>
     <p class="subtitle">Stay updated with your application progress.</p>
 
+    <button class="btn btn-secondary" id="clearAllBtn" style="margin-bottom:14px;">Clear all</button>
+
     <div class="notification-list" id="notificationList">
       <p class="subtitle">Loading notifications...</p>
     </div>
@@ -58,13 +60,14 @@
 
     function notificationCardHtml(note) {
       return `
-        <div class="notification-card">
+        <div class="notification-card" data-id="${note.id}">
           <div class="notification-icon">🔔</div>
           <div class="notification-content">
             <h3>${escapeHtml(note.title)}</h3>
             <p>${escapeHtml(note.message)}</p>
             <div class="notification-time">${escapeHtml(note.time_ago)}</div>
           </div>
+          <button class="btn btn-secondary remove-notification-btn" data-id="${note.id}" title="Remove">✕</button>
         </div>
       `;
     }
@@ -86,6 +89,7 @@
         }
 
         listEl.innerHTML = notifications.map(notificationCardHtml).join("");
+        wireRemoveButtons();
       } catch (err) {
         console.error(err);
         listEl.innerHTML = `
@@ -95,6 +99,32 @@
         `;
       }
     }
+
+    function wireRemoveButtons() {
+      document.querySelectorAll(".remove-notification-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = Number(btn.dataset.id);
+          btn.disabled = true;
+          try {
+            await deleteNotification(id, "seeker", seekerId);
+            await loadNotifications();
+          } catch (err) {
+            alert(`Couldn't remove notification: ${err.message}`);
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    document.getElementById("clearAllBtn").addEventListener("click", async () => {
+      if (!confirm("Remove all notifications? This can't be undone.")) return;
+      try {
+        await clearAllNotifications("seeker", seekerId);
+        await loadNotifications();
+      } catch (err) {
+        alert(`Couldn't clear notifications: ${err.message}`);
+      }
+    });   
 
     document.addEventListener("DOMContentLoaded", loadNotifications);
   </script>

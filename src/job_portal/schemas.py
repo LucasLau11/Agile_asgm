@@ -490,6 +490,35 @@ class MessageEdit(BaseModel):
         return _validate_message_body(value)
 
 
+class InterviewInviteCreate(BaseModel):
+    """Body for POST /api/messages/interview-invite (US-46, employer-only)."""
+
+    scheduled_at: datetime
+    duration_minutes: int = Field(default=30, ge=15, le=480)
+    mode: str = Field(..., pattern="^(video|phone|in_person)$")
+    location_or_link: Optional[str] = Field(default="", max_length=500)
+    notes: Optional[str] = Field(default="", max_length=2000)
+
+
+class InterviewResponseIn(BaseModel):
+    """Body for POST /api/messages/{id}/interview-response (US-47, seeker-only)."""
+
+    response: str = Field(..., pattern="^(accepted|declined)$")
+
+
+class InterviewInviteOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    scheduled_at: datetime
+    duration_minutes: int
+    mode: str
+    location_or_link: Optional[str] = ""
+    notes: Optional[str] = ""
+    status: str
+    responded_at: Optional[datetime] = None
+
+
 class MessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -507,6 +536,8 @@ class MessageOut(BaseModel):
     attachment_url: Optional[str] = None
     attachment_filename: Optional[str] = None
     attachment_type: Optional[str] = None
+    message_type: str = "text"
+    interview: Optional[InterviewInviteOut] = None
 
     @classmethod
     def from_message(cls, message, body: str) -> "MessageOut":
@@ -532,6 +563,11 @@ class MessageOut(BaseModel):
             ),
             attachment_filename=message.attachment_filename,
             attachment_type=message.attachment_type,
+            message_type=message.message_type,
+            interview=(
+                InterviewInviteOut.model_validate(message.interview_invite)
+                if message.interview_invite else None
+            ),
         )
 
 
