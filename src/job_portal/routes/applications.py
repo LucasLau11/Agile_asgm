@@ -285,11 +285,26 @@ async def api_update_applicant_stage(
 
 
 @router.get("/api/notifications")
-async def api_get_notifications(seeker_id: int = Query(1), db: Session = Depends(get_db)):
-    """Consumed by notifications.html."""
+async def api_get_notifications(
+    seeker_id: int = Query(1),
+    role: Optional[str] = Query(None, pattern="^(seeker|employer)$"),
+    user_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Consumed by notifications.html, and also the generic role/user_id
+    shape used elsewhere (mirrors the delete endpoints below). When role
+    and user_id are both supplied, they take precedence — this lets the
+    same endpoint serve an employer's notifications too. Falls back to the
+    original seeker_id-only behavior for backward compatibility."""
+    if role is not None and user_id is not None:
+        column = Notification.seeker_id if role == "seeker" else Notification.employer_id
+        notif_filter = column == user_id
+    else:
+        notif_filter = Notification.seeker_id == seeker_id
+
     records = (
         db.query(Notification)
-        .filter(Notification.seeker_id == seeker_id)
+        .filter(notif_filter)
         .order_by(Notification.created_at.desc())
         .all()
     )
