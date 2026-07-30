@@ -48,6 +48,29 @@
       `;
     }
 
+    // Fallbacks in case api.js on the server doesn't have these yet —
+    // keeps this page working even if that file is out of sync.
+    if (typeof deleteNotification !== "function") {
+      window.deleteNotification = function (notificationId, role, userId) {
+        return fetch(`/api/notifications/${notificationId}?role=${role}&user_id=${userId}`, {
+          method: "DELETE",
+        }).then((res) => {
+          if (!res.ok) throw new Error("Failed to remove notification");
+          return res.json();
+        });
+      };
+    }
+    if (typeof clearAllNotifications !== "function") {
+      window.clearAllNotifications = function (role, userId) {
+        return fetch(`/api/notifications?role=${role}&user_id=${userId}`, {
+          method: "DELETE",
+        }).then((res) => {
+          if (!res.ok) throw new Error("Failed to clear notifications");
+          return res.json();
+        });
+      };
+    }
+
     function escapeHtml(str) {
       if (!str) return "";
       return str
