@@ -55,6 +55,8 @@ _ensure_columns(
     {
         "hidden_for_seeker": "INTEGER DEFAULT 0",
         "hidden_for_employer": "INTEGER DEFAULT 0",
+        "blocked_by_seeker": "INTEGER DEFAULT 0",
+        "blocked_by_employer": "INTEGER DEFAULT 0",
     },
 )
 

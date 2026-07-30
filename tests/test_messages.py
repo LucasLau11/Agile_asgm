@@ -562,6 +562,56 @@ def test_non_participant_cannot_fetch_attachment(client):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Block user
+# ---------------------------------------------------------------------------
+
+
+def test_seeker_can_block_and_unblock_an_employer(client):
+    """A seeker can stop a conversation and later resume it themselves."""
+    sent = _send(client, "seeker", 1, 2, "Hello").json()
+    convo_id = sent["conversation_id"]
+
+    blocked = client.post(f"/api/conversations/{convo_id}/block?role=seeker&user_id=1")
+    assert blocked.status_code == 200
+    assert blocked.json()["is_blocked"] is True
+    assert blocked.json()["blocked_by_me"] is True
+
+    seeker_thread = client.get(f"/api/conversations/{convo_id}/messages?role=seeker&user_id=1")
+    employer_thread = client.get(f"/api/conversations/{convo_id}/messages?role=employer&user_id=2")
+    assert seeker_thread.json()["blocked_by_me"] is True
+    assert employer_thread.json()["is_blocked"] is True
+    assert employer_thread.json()["blocked_by_me"] is False
+
+    rejected = _send(client, "employer", 2, 1, "Can you reply?")
+    assert rejected.status_code == 403
+
+    unblocked = client.delete(f"/api/conversations/{convo_id}/block?role=seeker&user_id=1")
+    assert unblocked.status_code == 200
+    assert unblocked.json()["is_blocked"] is False
+    assert _send(client, "employer", 2, 1, "Thanks").status_code == 200
+
+
+def test_employer_can_block_a_seeker_and_block_prevents_attachments(client):
+    """The same protection applies from the employer view and to attachments."""
+    sent = _send(client, "seeker", 1, 2, "Hello").json()
+    convo_id = sent["conversation_id"]
+    assert client.post(f"/api/conversations/{convo_id}/block?role=employer&user_id=2").status_code == 200
+
+    attachment = client.post(
+        "/api/messages/attachment",
+        data={"sender_role": "seeker", "sender_id": "1", "recipient_id": "2", "body": ""},
+        files={"file": ("note.png", _PNG_1PX, "image/png")},
+    )
+    assert attachment.status_code == 403
+
+
+def test_non_participant_cannot_block_conversation(client):
+    sent = _send(client, "seeker", 1, 2, "Hello").json()
+    r = client.post(f"/api/conversations/{sent['conversation_id']}/block?role=seeker&user_id=3")
+    assert r.status_code == 403
+
+
 def test_delete_conversation_hides_it_only_for_requester(client):
     """
     Given a conversation between a seeker and employer

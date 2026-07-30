@@ -104,10 +104,15 @@ class JobOut(BaseModel):
     positions_remaining: int = 1
     credibility_score: Optional[int] = None
     match_percentage: Optional[int] = None
+    missing_skills: List[str] = []
 
     @classmethod
     def from_job(
-        cls, job, credibility_score: Optional[int] = None, match_percentage: Optional[int] = None
+        cls,
+        job,
+        credibility_score: Optional[int] = None,
+        match_percentage: Optional[int] = None,
+        missing_skills: Optional[List[str]] = None,
     ) -> "JobOut":
         return cls(
             id=job.id,
@@ -127,8 +132,8 @@ class JobOut(BaseModel):
             positions_remaining=job.positions_remaining(),
             credibility_score=credibility_score,
             match_percentage=match_percentage,
+            missing_skills=missing_skills or [],
         )
-
 
 # ---------- Employer job management (Teammate A) ----------
 #
@@ -581,6 +586,8 @@ class ConversationOut(BaseModel):
     last_message_preview: str
     last_message_at: Optional[datetime] = None
     unread_count: int = 0
+    is_blocked: bool = False
+    blocked_by_me: bool = False
 
 
 class ParsedResumeOut(BaseModel):
