@@ -53,10 +53,6 @@
             <label for="salaryMinInput">Min salary (RM/month)</label>
             <input type="number" id="salaryMinInput" placeholder="e.g. 3000" min="0" />
           </div>
-          <div class="filter-field">
-            <label for="salaryMaxInput">Max salary (RM/month)</label>
-            <input type="number" id="salaryMaxInput" placeholder="e.g. 8000" min="0" />
-          </div>
         </div>
         <button type="button" class="btn btn-secondary" id="clearFiltersBtn">Clear filters</button>
       </div>
@@ -104,7 +100,6 @@
       document.getElementById("stateInput").value = "";
       document.getElementById("jobTypeInput").value = "";
       document.getElementById("salaryMinInput").value = "";
-      document.getElementById("salaryMaxInput").value = "";
       loadJobs(currentFilters());
     });
 
@@ -114,7 +109,6 @@
         state: document.getElementById("stateInput").value,
         jobType: document.getElementById("jobTypeInput").value,
         salaryMin: document.getElementById("salaryMinInput").value,
-        salaryMax: document.getElementById("salaryMaxInput").value,
       };
     }
 

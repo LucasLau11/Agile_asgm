@@ -23,7 +23,7 @@
   </div>
 </header>
 
-  <div class="dev-user-bar" id=\"devUserBar\"></div>
+  <div class="dev-user-bar" id="devUserBar"></div>
 
   <main class="page">
     <h1>My Applications</h1>
@@ -37,7 +37,7 @@
   <script src="../js/api.js"></script>
   <script>
     // Initialize user bar login mock setup just like browse_job.html
-    const seekerId = 1; 
+    const seekerId = (typeof getCurrentSeekerId === "function") ? getCurrentSeekerId() : 1;
     if (typeof renderDevUserBar === "function") {
       renderDevUserBar("devUserBar");
     } else {

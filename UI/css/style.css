@@ -293,6 +293,11 @@ h1 {
   margin: 2px 4px 0 0;
 }
 
+.skill-tag.missing {
+  background: #f5e6e4;
+  color: var(--danger);
+}
+
 /* ---------- Trust seal (signature element) ---------- */
 
 .trust-seal {
