@@ -195,13 +195,15 @@ async function apiFetch(path, options = {}) {
   return res.json();
 }
 
-function fetchJobs({ keyword = "", location = "", state = "", jobType = "", salaryMin = "" } = {}) {
+function fetchJobs({ keyword = "", location = "", state = "", jobType = "", salaryMin = "", seekerId = "", sortBy = "" } = {}) {
   const params = new URLSearchParams();
   if (keyword) params.set("keyword", keyword);
   if (location) params.set("location", location);
   if (state) params.set("state", state);
   if (jobType) params.set("job_type", jobType);
   if (salaryMin) params.set("salary_min", salaryMin);
+  if (seekerId) params.set("seeker_id", seekerId);
+  if (sortBy) params.set("sort_by", sortBy);
   const query = params.toString();
   return apiFetch(`/api/jobs${query ? `?${query}` : ""}`);
 }
@@ -341,11 +343,17 @@ function clearAllNotifications(role, userId) {
   });
 }
 
-function trustSealHtml(score) {
+function trustSealHtml(score, reasons) {
   const safeScore = score == null ? "—" : score;
   const lowClass = score != null && score < 50 ? "low" : "";
+  const tooltip =
+    reasons && reasons.length > 0
+      ? `Credibility score. Lowered by: ${reasons.join("; ")}`
+      : score != null
+      ? "Credibility score. No issues found with this posting."
+      : "Credibility score";
   return `
-    <div class="trust-seal ${lowClass}" title="Credibility score">
+    <div class="trust-seal ${lowClass}" title="${escapeHtml(tooltip)}">
       <div class="score">${safeScore}</div>
       <div class="label">Trust</div>
     </div>

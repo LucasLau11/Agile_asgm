@@ -29,6 +29,12 @@
     <form id="searchForm">
       <div class="search-bar">
         <input type="text" id="keywordInput" placeholder="Keyword (e.g. 'backend', 'designer')" />
+        <select id="sortInput">
+          <option value="newest">Newest first</option>
+          <option value="match">Best match</option>
+          <option value="salary_high">Salary: high to low</option>
+          <option value="salary_low">Salary: low to high</option>
+        </select>
         <button type="button" class="btn btn-secondary" id="toggleFiltersBtn">Advanced filters</button>
         <button type="submit" class="btn btn-primary">Search</button>
       </div>
@@ -100,6 +106,11 @@
       document.getElementById("stateInput").value = "";
       document.getElementById("jobTypeInput").value = "";
       document.getElementById("salaryMinInput").value = "";
+      document.getElementById("sortInput").value = "newest";
+      loadJobs(currentFilters());
+    });
+
+    document.getElementById("sortInput").addEventListener("change", () => {
       loadJobs(currentFilters());
     });
 
@@ -109,18 +120,28 @@
         state: document.getElementById("stateInput").value,
         jobType: document.getElementById("jobTypeInput").value,
         salaryMin: document.getElementById("salaryMinInput").value,
+        seekerId,
+        sortBy: document.getElementById("sortInput").value,
       };
     }
 
-    function jobCardHtml(job, { showMatch = false } = {}) {
+    function jobCardHtml(job) {
       const matchBadge =
-        showMatch && job.match_percentage != null
+        job.match_percentage != null
           ? `<span class="match-badge">${job.match_percentage}% match</span>`
           : "";
       const spotsLabel =
         job.positions_remaining === 0
           ? `<span class="spots-tag full">No spots left</span>`
           : `<span class="spots-tag">${job.positions_remaining} of ${job.positions_available} spots open</span>`;
+
+      const missingSet = new Set((job.missing_skills || []).map((s) => s.toLowerCase()));
+      const skillsHtml = job.skills_required
+        .map((s) => {
+          const isMissing = missingSet.has(s.toLowerCase());
+          return `<span class="skill-tag${isMissing ? " missing" : ""}">${escapeHtml(s)}</span>`;
+        })
+        .join("");
 
       return `
         <a class="card job-card" href="job_detail.html?id=${job.id}">
@@ -133,11 +154,10 @@
             </div>
             <div style="margin-bottom:6px;">${spotsLabel}</div>
             <div>
-              ${job.skills_required.map((s) => `<span class="skill-tag">${escapeHtml(s)}</span>`).join("") ||
-                `<span style="color:var(--ink-soft); font-size:0.85rem;">No skills listed</span>`}
+              ${skillsHtml || `<span style="color:var(--ink-soft); font-size:0.85rem;">No skills listed</span>`}
             </div>
           </div>
-          ${trustSealHtml(job.credibility_score)}
+          ${trustSealHtml(job.credibility_score, job.credibility_reasons)}
         </a>`;
     }
 
@@ -171,7 +191,7 @@
         document.getElementById("recommendedSection").style.display = "block";
         document.getElementById("allJobsHeading").style.display = "block";
         document.getElementById("recommendedList").innerHTML = jobs
-          .map((job) => jobCardHtml(job, { showMatch: true }))
+          .map((job) => jobCardHtml(job))
           .join("");
       } catch (err) {
         // Recommendations are a bonus feature — fail silently rather than
@@ -185,7 +205,7 @@
       loadJobs(currentFilters());
     });
 
-    loadJobs();
+    loadJobs(currentFilters());
     loadRecommended();
   </script>
 </body>

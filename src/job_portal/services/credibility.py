@@ -58,6 +58,31 @@ def _track_record_score(job: Job, db: Session) -> int:
     return _TRACK_RECORD_BUCKETS[-1][1]
 
 
+def compute_credibility_reasons(job: Job, db: Session) -> list:
+    """
+    Human-readable explanation of what's shaping the credibility score —
+    powers a tooltip on the trust seal, so the number isn't just an
+    unexplained percentage. Mirrors the same conditions each sub-score
+    function above checks.
+    """
+    reasons = []
+    if not (job.description and len(job.description.strip()) > 50):
+        reasons.append("Description is short or missing detail")
+    if not (job.location and job.location.strip()):
+        reasons.append("Location not specified")
+    if not job.skills_list():
+        reasons.append("No required skills listed")
+    if job.salary_min is None and job.salary_max is None:
+        reasons.append("Salary not specified")
+    elif _salary_sanity_score(job) == 0:
+        reasons.append("Salary range looks invalid")
+    if not (1 <= (job.positions_available or 0) <= _MAX_SANE_POSITIONS):
+        reasons.append("Unusual number of positions requested")
+    total_postings = db.query(Job).filter(Job.employer_id == job.employer_id).count()
+    if total_postings <= 2:
+        reasons.append("New or limited-history employer")
+    return reasons
+
 def compute_credibility_score(job: Job, db: Session) -> int:
     score = (
         _completeness_score(job)

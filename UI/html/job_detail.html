@@ -88,7 +88,7 @@ renderDevUserBar("devUserBar");
               <p class="subtitle" style="margin-bottom:8px;">${escapeHtml(formatSalary(job.salary_min, job.salary_max))}</p>
               ${spotsLabel}
             </div>
-            ${trustSealHtml(job.credibility_score)}
+            ${trustSealHtml(job.credibility_score, job.credibility_reasons)}
           </div>
 
           <div style="margin:18px 0">

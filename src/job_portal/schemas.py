@@ -103,6 +103,7 @@ class JobOut(BaseModel):
     positions_filled: int = 0
     positions_remaining: int = 1
     credibility_score: Optional[int] = None
+    credibility_reasons: List[str] = []
     match_percentage: Optional[int] = None
     missing_skills: List[str] = []
 
@@ -111,6 +112,7 @@ class JobOut(BaseModel):
         cls,
         job,
         credibility_score: Optional[int] = None,
+        credibility_reasons: Optional[List[str]] = None,
         match_percentage: Optional[int] = None,
         missing_skills: Optional[List[str]] = None,
     ) -> "JobOut":
@@ -131,6 +133,7 @@ class JobOut(BaseModel):
             positions_filled=job.positions_filled,
             positions_remaining=job.positions_remaining(),
             credibility_score=credibility_score,
+            credibility_reasons=credibility_reasons or [],
             match_percentage=match_percentage,
             missing_skills=missing_skills or [],
         )

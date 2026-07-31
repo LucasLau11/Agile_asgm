@@ -331,6 +331,106 @@ def test_no_salary_filter_still_shows_unspecified_salary_jobs(client, db_session
     assert r.status_code == 200
     assert len(r.json()) == 1
 
+# ---------------------------------------------------------------------------
+# Match data + sorting on the main job list (UX addition: don't make a
+# seeker click into every job just to see how well they match it)
+# ---------------------------------------------------------------------------
+
+
+def test_list_jobs_without_seeker_id_has_no_match_data(client, sample_job):
+    r = client.get("/api/jobs")
+    assert r.status_code == 200
+    body = r.json()[0]
+    assert body["match_percentage"] is None
+    assert body["missing_skills"] == []
+
+
+def test_list_jobs_with_seeker_id_shows_match_data(client, sample_job):
+    client.put("/api/seekers/80/skills", json={"skills": ["Python", "SQL"]})
+    r = client.get("/api/jobs?seeker_id=80")
+    assert r.status_code == 200
+    body = r.json()[0]
+    assert body["match_percentage"] == 67
+    assert body["missing_skills"] == ["FastAPI"]
+
+
+def test_sort_by_match_orders_best_match_first(client, db_session):
+    db_session.add_all([
+        Job(employer_id=1, title="Low match job", description="x" * 60,
+            skills_required="Python,Java,C++,Go", status="open"),
+        Job(employer_id=1, title="High match job", description="x" * 60,
+            skills_required="Python", status="open"),
+    ])
+    db_session.commit()
+    client.put("/api/seekers/81/skills", json={"skills": ["Python"]})
+    r = client.get("/api/jobs?seeker_id=81&sort_by=match")
+    assert r.status_code == 200
+    titles = [job["title"] for job in r.json()]
+    assert titles[0] == "High match job"
+
+
+def test_sort_by_match_without_seeker_id_falls_back_to_newest(client, db_session):
+    r = client.get("/api/jobs?sort_by=match")
+    assert r.status_code == 200
+
+
+def test_sort_by_salary_high_orders_highest_first(client, db_session):
+    db_session.add_all([
+        Job(employer_id=1, title="Lower paying", description="x" * 60,
+            salary_min=2000, salary_max=3000, status="open"),
+        Job(employer_id=1, title="Higher paying", description="x" * 60,
+            salary_min=6000, salary_max=8000, status="open"),
+    ])
+    db_session.commit()
+    r = client.get("/api/jobs?sort_by=salary_high")
+    assert r.status_code == 200
+    titles = [job["title"] for job in r.json()]
+    assert titles[0] == "Higher paying"
+
+
+def test_sort_by_salary_low_orders_lowest_first(client, db_session):
+    db_session.add_all([
+        Job(employer_id=1, title="Lower paying", description="x" * 60,
+            salary_min=2000, salary_max=3000, status="open"),
+        Job(employer_id=1, title="Higher paying", description="x" * 60,
+            salary_min=6000, salary_max=8000, status="open"),
+    ])
+    db_session.commit()
+    r = client.get("/api/jobs?sort_by=salary_low")
+    assert r.status_code == 200
+    titles = [job["title"] for job in r.json()]
+    assert titles[0] == "Lower paying"
+
+
+def test_credibility_reasons_flag_missing_salary(client, db_session):
+    db_session.add(
+        Job(employer_id=1, title="No salary job", description="x" * 60,
+            skills_required="Python", location="KL",
+            salary_min=None, salary_max=None, status="open")
+    )
+    db_session.commit()
+    r = client.get("/api/jobs")
+    reasons = r.json()[0]["credibility_reasons"]
+    assert "Salary not specified" in reasons
+
+
+def test_credibility_reasons_empty_for_a_fully_complete_posting(client, db_session):
+    employer_id = 42
+    for i in range(5):
+        db_session.add(
+            Job(employer_id=employer_id, title=f"Prior job {i}", description="x" * 60,
+                skills_required="Python", location="KL", salary_min=3000, salary_max=5000,
+                positions_available=1, status="closed")
+        )
+    db_session.add(
+        Job(employer_id=employer_id, title="Complete job", description="x" * 60,
+            skills_required="Python", location="KL", salary_min=3000, salary_max=5000,
+            positions_available=1, status="open")
+    )
+    db_session.commit()
+    r = client.get("/api/jobs")
+    complete_job = next(j for j in r.json() if j["title"] == "Complete job")
+    assert complete_job["credibility_reasons"] == []
 
 def test_positions_remaining_computed_correctly(client, db_session):
     """
