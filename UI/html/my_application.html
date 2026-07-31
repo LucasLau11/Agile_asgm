@@ -30,7 +30,7 @@
     <p class="subtitle">Track the progress of your submitted job applications.</p>
 
     <div class="application-list" id="applicationList">
-      <p class="subtitle">Loading your applications...</p>
+      <p class="loading-state">Loading your applications...</p>
     </div>
   </main>
 
@@ -66,6 +66,7 @@
       
       if (status === "Screening") statusClass = "status-screening";
       else if (status === "Interview") statusClass = "status-interview";
+      else if (status === "Offered") statusClass = "status-offered";
       else if (status === "Rejected") statusClass = "status-rejected";
 
       // Handle raw skill csv strings or array types safely
@@ -78,7 +79,7 @@
       }
 
       return `
-        <div class="application-card">
+        <div class="card application-card">
           <div class="application-main">
             <h3>${escapeHtml(app.job_title || "Job Title Not Specified")}</h3>
             <div class="application-meta">${escapeHtml(app.company || "Company Profile")}</div>
@@ -116,11 +117,7 @@
         }
 
         if (applications.length === 0) {
-          listEl.innerHTML = `
-            <p class="subtitle" style="text-align: center; color: #777; margin-top: 30px;">
-              You haven't submitted any job applications yet.
-            </p>
-          `;
+          listEl.innerHTML = `<div class="empty-state">You haven't submitted any job applications yet.</div>`;
           return;
         }
 

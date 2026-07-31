@@ -24,7 +24,7 @@
           <button class="btn btn-secondary" id="newMessageBtn" type="button">+ New</button>
         </div>
         <div class="conversation-list" id="conversationList">
-          <p class="subtitle" style="padding:16px;">Loading conversations…</p>
+          <p class="loading-state">Loading conversations…</p>
         </div>
       </section>
 
@@ -149,7 +149,7 @@
     function renderConversationList() {
       const list = document.getElementById("conversationList");
       if (conversations.length === 0) {
-        list.innerHTML = `<p class="subtitle" style="padding:16px;">No conversations yet — start one with "+ New".</p>`;
+        list.innerHTML = `<div class="empty-state">No conversations yet — start one with "+ New".</div>`;
         return;
       }
       list.innerHTML = conversations.map((c) => `
@@ -592,7 +592,8 @@
       async function doSend() {
         const bodyText = input.value.trim();
         if (!bodyText && !pendingFile) return;
-        sendBtn.disabled = true;
+        if (sendBtn.disabled) return;
+        setButtonBusy(sendBtn, true, "Sending…");
         try {
           if (pendingFile) {
             await sendMessageWithAttachment({
@@ -619,7 +620,7 @@
         } catch (err) {
           alert(err.message);
         } finally {
-          sendBtn.disabled = false;
+          setButtonBusy(sendBtn, false);
         }
       }
 

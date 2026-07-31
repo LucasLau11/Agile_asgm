@@ -13,19 +13,10 @@
 
 
 .application-card {
-  background: var(--paper-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
   padding: 20px;
   display: flex;
   justify-content: space-between;
   gap: 20px;
-  transition: border-color 0.15s ease;
-}
-
-
-.application-card:hover {
-  border-color: var(--trust);
 }
 
 
@@ -61,14 +52,14 @@
 
 
 .status-applied {
-  background: #e8f0ff;
-  color: #2855a6;
+  background: var(--info-soft);
+  color: var(--info);
 }
 
 
 .status-screening {
-  background: #fff3cd;
-  color: #8a6500;
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 
@@ -153,9 +144,6 @@
 
 
 .notification-card {
-  background: var(--paper-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
   padding: 18px;
   display: flex;
   gap: 16px;
@@ -204,9 +192,6 @@
 
 
 .applicant-card {
-  background: var(--paper-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
   padding: 20px;
 }
 

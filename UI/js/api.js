@@ -358,6 +358,21 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+/** Toggles a submit button's disabled state and swaps its label to a
+ * "busy" message while an async action is in flight, restoring the
+ * original label afterwards. Call setButtonBusy(btn, true, "Saving…")
+ * before the request and setButtonBusy(btn, false) in a finally block. */
+function setButtonBusy(button, busy, busyLabel) {
+  if (busy) {
+    button.dataset.originalLabel = button.textContent;
+    button.textContent = busyLabel || "Working…";
+    button.disabled = true;
+  } else {
+    if (button.dataset.originalLabel) button.textContent = button.dataset.originalLabel;
+    button.disabled = false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Messaging (messages.html, plus "Message Employer" / "Message Seeker"
 // buttons on job_detail.html / applicant_detail.html). US-40 to US-43.

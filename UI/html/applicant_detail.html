@@ -29,7 +29,7 @@
     <p class="subtitle">Review candidate information and update recruitment progress.</p>
 
     <div id="applicantContainer">
-      <p class="subtitle">Loading applicant...</p>
+      <p class="loading-state">Loading applicant...</p>
     </div>
   </main>
 
@@ -92,9 +92,7 @@
           <button id="messageSeekerBtn" class="btn btn-secondary">Message Seeker</button>
 
           <h3 style="margin-top:20px;">Cover Letter</h3>
-          <p style="font-style:italic; background:#f9f9f9; padding:12px; border-left:3px solid #ccc;">
-            "${escapeHtml(applicant.cover_letter)}"
-          </p>
+          <p class="quote-box">"${escapeHtml(applicant.cover_letter)}"</p>
 
           <h3 style="margin-top:25px;">Recruitment Progress</h3>
           <div class="stage-timeline">${timelineHtml(applicant.status)}</div>

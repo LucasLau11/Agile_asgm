@@ -66,7 +66,7 @@
 
     <h2 class="section-heading" id="allJobsHeading" style="display:none;">All jobs</h2>
     <div id="jobList" class="job-list">
-      <p class="subtitle">Loading jobs…</p>
+      <p class="loading-state">Loading jobs…</p>
     </div>
   </main>
 
@@ -123,7 +123,7 @@
           : `<span class="spots-tag">${job.positions_remaining} of ${job.positions_available} spots open</span>`;
 
       return `
-        <a class="job-card" href="job_detail.html?id=${job.id}">
+        <a class="card job-card" href="job_detail.html?id=${job.id}">
           <div class="job-main">
             <h3>${escapeHtml(job.title)} ${matchBadge}</h3>
             <div class="job-meta">
@@ -155,7 +155,7 @@
 
     async function loadJobs(filters = {}) {
       const jobListEl = document.getElementById("jobList");
-      jobListEl.innerHTML = `<p class="subtitle">Loading jobs…</p>`;
+      jobListEl.innerHTML = `<p class="loading-state">Loading jobs…</p>`;
       try {
         const jobs = await fetchJobs(filters);
         renderJobs(jobs);

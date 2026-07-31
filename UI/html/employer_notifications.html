@@ -31,7 +31,7 @@
     <button class="btn btn-secondary" id="clearAllBtn" style="margin-bottom:14px;">Clear all</button>
 
     <div class="notification-list" id="notificationList">
-      <p class="subtitle">Loading notifications...</p>
+      <p class="loading-state">Loading notifications...</p>
     </div>
   </main>
 
@@ -85,7 +85,7 @@
 
     function notificationCardHtml(note) {
       return `
-        <div class="notification-card" data-id="${note.id}">
+        <div class="card notification-card" data-id="${note.id}">
           <div class="notification-icon">🔔</div>
           <div class="notification-content">
             <h3>${escapeHtml(note.title)}</h3>
@@ -106,11 +106,7 @@
         const notifications = await apiFetch(`/api/employer/notifications?employer_id=${employerId}`);
 
         if (notifications.length === 0) {
-          listEl.innerHTML = `
-            <p class="subtitle" style="text-align:center; color:#777; margin-top:30px;">
-              You don't have any notifications yet.
-            </p>
-          `;
+          listEl.innerHTML = `<div class="empty-state">You don't have any notifications yet.</div>`;
           return;
         }
 

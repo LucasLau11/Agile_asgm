@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>My Profile</title>
   <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/application.css" />
 </head>
 <body>
   <header class="topbar">
@@ -295,8 +296,10 @@
     document.getElementById("infoForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const statusEl = document.getElementById("infoStatus");
+      const submitBtn = e.target.querySelector('button[type="submit"]');
       statusEl.textContent = "";
       if (!validateInfoForm()) return;
+      setButtonBusy(submitBtn, true, "Saving…");
       try {
         profileData = await updateProfileInfo(seekerId, {
           full_name: document.getElementById("fullNameInput").value.trim(),
@@ -313,6 +316,8 @@
       } catch (err) {
         statusEl.textContent = `Couldn't save: ${err.message}`;
         statusEl.className = "status-msg error";
+      } finally {
+        setButtonBusy(submitBtn, false);
       }
     });
 
