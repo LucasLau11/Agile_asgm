@@ -15,6 +15,7 @@
     <nav>
       <a href="/UI/html/browse_job.html">Browse Jobs</a>
       <a href="/UI/html/my_application.html">My Applications</a>
+      <a href="/UI/html/messages.html?role=seeker">Messages</a>
       <a href="/UI/html/notifications.html">Notifications</a>
       <a href="/UI/html/profile.html">Profile</a>
     </nav>
@@ -22,21 +23,21 @@
   </div>
 </header>
 
-  <div class="dev-user-bar" id=\"devUserBar\"></div>
+  <div class="dev-user-bar" id="devUserBar"></div>
 
   <main class="page">
     <h1>My Applications</h1>
     <p class="subtitle">Track the progress of your submitted job applications.</p>
 
     <div class="application-list" id="applicationList">
-      <p class="subtitle">Loading your applications...</p>
+      <p class="loading-state">Loading your applications...</p>
     </div>
   </main>
 
   <script src="../js/api.js"></script>
   <script>
     // Initialize user bar login mock setup just like browse_job.html
-    const seekerId = 1; 
+    const seekerId = (typeof getCurrentSeekerId === "function") ? getCurrentSeekerId() : 1;
     if (typeof renderDevUserBar === "function") {
       renderDevUserBar("devUserBar");
     } else {
@@ -65,6 +66,7 @@
       
       if (status === "Screening") statusClass = "status-screening";
       else if (status === "Interview") statusClass = "status-interview";
+      else if (status === "Offered") statusClass = "status-offered";
       else if (status === "Rejected") statusClass = "status-rejected";
 
       // Handle raw skill csv strings or array types safely
@@ -77,7 +79,7 @@
       }
 
       return `
-        <div class="application-card">
+        <div class="card application-card">
           <div class="application-main">
             <h3>${escapeHtml(app.job_title || "Job Title Not Specified")}</h3>
             <div class="application-meta">${escapeHtml(app.company || "Company Profile")}</div>
@@ -115,11 +117,7 @@
         }
 
         if (applications.length === 0) {
-          listEl.innerHTML = `
-            <p class="subtitle" style="text-align: center; color: #777; margin-top: 30px;">
-              You haven't submitted any job applications yet.
-            </p>
-          `;
+          listEl.innerHTML = `<div class="empty-state">You haven't submitted any job applications yet.</div>`;
           return;
         }
 

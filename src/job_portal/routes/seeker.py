@@ -18,7 +18,8 @@ from job_portal.schemas import (
     SeekerProfileOut,
     SkillsUpdate,
 )
-from job_portal.services.credibility import compute_credibility_score
+from job_portal.services.credibility import compute_credibility_score, compute_credibility_reasons
+from job_portal.services.matching import compute_skill_match
 from job_portal.services.file_validation import (
     ALLOWED_EXTENSIONS,
     MAX_RESUME_SIZE_BYTES,
@@ -44,7 +45,6 @@ def _get_or_create_profile(db: Session, seeker_id: int) -> SeekerProfile:
 
 
 # Browse, search, and filter job postings
-
 @router.get("/api/jobs", response_model=List[JobOut])
 def list_jobs(
     keyword: Optional[str] = None,
@@ -52,10 +52,15 @@ def list_jobs(
     state: Optional[str] = None,
     job_type: Optional[str] = None,
     salary_min: Optional[int] = None,
-    salary_max: Optional[int] = None,
+    seeker_id: Optional[int] = None,
+    sort_by: Optional[str] = None,
     db: Session = Depends(get_db),
 ) -> List[JobOut]:
-   
+    """
+    sort_by: "newest" (default), "salary_high", "salary_low", or "match"
+    ("match" only has an effect when seeker_id is also supplied — otherwise
+    there's nothing to sort by, so it silently falls back to "newest").
+    """
     query = db.query(Job).filter(Job.status == "open")
 
     if keyword:
@@ -72,36 +77,44 @@ def list_jobs(
         query = query.filter(Job.job_type.ilike(job_type))
 
     if salary_min is not None:
-        # Exclude jobs whose max salary is below what the seeker wants.
-        query = query.filter((Job.salary_max.is_(None)) | (Job.salary_max >= salary_min))
+        query = query.filter(Job.salary_min.is_not(None), Job.salary_min >= salary_min)
 
-    if salary_max is not None:
-        # Exclude jobs whose min salary is above what the seeker wants.
-        query = query.filter((Job.salary_min.is_(None)) | (Job.salary_min <= salary_max))
+    if sort_by == "salary_high":
+        query = query.order_by(Job.salary_max.desc().nullslast())
+    elif sort_by == "salary_low":
+        query = query.order_by(Job.salary_min.asc().nullslast())
+    else:
+        query = query.order_by(Job.created_at.desc())
 
-    jobs = query.order_by(Job.created_at.desc()).all()
-    return [
-        JobOut.from_job(job, credibility_score=compute_credibility_score(job, db))
-        for job in jobs
-    ]
+    jobs = query.all()
 
-# Resume/skill-based job matching 
-def _match_percentage(seeker_skills: list[str], job_skills: list[str]) -> int:
-    """
-    Simple overlap-based matching algorithm.
+    seeker_skills: List[str] = []
+    if seeker_id is not None:
+        profile = db.query(SeekerProfile).filter(SeekerProfile.seeker_id == seeker_id).first()
+        seeker_skills = profile.skills_list() if profile else []
 
-    Score = (number of the job's required skills that the seeker has)
-             / (total number of the job's required skills) * 100
-    """
-    if not job_skills:
-        return 0
-    seeker_set = {s.strip().lower() for s in seeker_skills if s.strip()}
-    job_set = {s.strip().lower() for s in job_skills if s.strip()}
-    if not seeker_set or not job_set:
-        return 0
-    overlap = seeker_set & job_set
-    return round(len(overlap) / len(job_set) * 100)
+    results = []
+    for job in jobs:
+        match_percentage = None
+        missing_skills: List[str] = []
+        if seeker_id is not None:
+            match = compute_skill_match(seeker_skills, job.skills_list())
+            match_percentage = match["match_percentage"]
+            missing_skills = match["missing_skills"]
+        results.append(
+            JobOut.from_job(
+                job,
+                credibility_score=compute_credibility_score(job, db),
+                credibility_reasons=compute_credibility_reasons(job, db),
+                match_percentage=match_percentage,
+                missing_skills=missing_skills,
+            )
+        )
 
+    if sort_by == "match" and seeker_id is not None:
+        results.sort(key=lambda j: j.match_percentage or 0, reverse=True)
+
+    return results
 
 @router.get("/api/jobs/recommended", response_model=List[JobOut])
 def recommended_jobs(
@@ -119,29 +132,45 @@ def recommended_jobs(
     jobs = db.query(Job).filter(Job.status == "open").all()
     scored = []
     for job in jobs:
-        pct = _match_percentage(seeker_skills, job.skills_list())
-        if pct >= min_match:
-            scored.append((pct, job))
+        match = compute_skill_match(seeker_skills, job.skills_list())
+        if match["match_percentage"] >= min_match:
+            scored.append((match, job))
 
-    scored.sort(key=lambda pair: pair[0], reverse=True)
+    scored.sort(key=lambda pair: pair[0]["match_percentage"], reverse=True)
     return [
         JobOut.from_job(
             job,
             credibility_score=compute_credibility_score(job, db),
-            match_percentage=pct,
+            credibility_reasons=compute_credibility_reasons(job, db),
+            match_percentage=match["match_percentage"],
+            missing_skills=match["missing_skills"],
         )
-        for pct, job in scored[:limit]
+        for match, job in scored[:limit]
     ]
 
 
 @router.get("/api/jobs/{job_id}", response_model=JobOut)
-def get_job(job_id: int, db: Session = Depends(get_db)) -> JobOut:
-    """US-21: View full details of a single job posting."""
+def get_job(job_id: int, seeker_id: Optional[int] = None, db: Session = Depends(get_db)) -> JobOut:
     job = db.query(Job).filter(Job.id == job_id).first()
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    return JobOut.from_job(job, credibility_score=compute_credibility_score(job, db))
 
+    match_percentage = None
+    missing_skills: List[str] = []
+    if seeker_id is not None:
+        profile = db.query(SeekerProfile).filter(SeekerProfile.seeker_id == seeker_id).first()
+        seeker_skills = profile.skills_list() if profile else []
+        match = compute_skill_match(seeker_skills, job.skills_list())
+        match_percentage = match["match_percentage"]
+        missing_skills = match["missing_skills"]
+
+    return JobOut.from_job(
+        job,
+        credibility_score=compute_credibility_score(job, db),
+        credibility_reasons=compute_credibility_reasons(job, db),
+        match_percentage=match_percentage,
+        missing_skills=missing_skills,
+    )
 
 @router.get("/api/seekers/{seeker_id}", response_model=SeekerProfileOut)
 def get_seeker_profile(seeker_id: int, db: Session = Depends(get_db)) -> SeekerProfileOut:

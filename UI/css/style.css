@@ -10,11 +10,22 @@
   --trust-soft: #e5efe9;
   --gold: #c9973f;
   --danger: #a4342a;
+  --info: #2855a6;
+  --info-soft: #e8f0ff;
+  --warning: #8a6500;
+  --warning-soft: #fff3cd;
 
   --font-display: 'Fraunces', serif;
   --font-body: 'Inter', system-ui, sans-serif;
 
   --radius: 10px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
 }
 
 * { box-sizing: border-box; }
@@ -58,6 +69,20 @@ a { color: inherit; }
 }
 .topbar nav a:hover { opacity: 1; text-decoration: underline; }
 .topbar nav a.active { opacity: 1; text-decoration: underline; }
+
+.nav-badge {
+  display: inline-block;
+  min-width: 16px;
+  padding: 1px 5px;
+  margin-left: 5px;
+  border-radius: 999px;
+  background: var(--danger, #d64545);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-align: center;
+  vertical-align: 2px;
+}
 
 .topbar-right {
   display: flex;
@@ -241,9 +266,6 @@ h1 {
 .job-list { display: flex; flex-direction: column; gap: 14px; }
 
 .job-card {
-  background: var(--paper-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
   padding: 18px 20px;
   display: flex;
   justify-content: space-between;
@@ -253,7 +275,7 @@ h1 {
   color: var(--ink);
   transition: border-color 0.15s ease;
 }
-.job-card:hover { border-color: var(--trust); }
+a.job-card:hover { border-color: var(--trust); }
 
 .job-card .job-main { flex: 1; }
 
@@ -277,6 +299,11 @@ h1 {
   padding: 3px 10px;
   border-radius: 20px;
   margin: 2px 4px 0 0;
+}
+
+.skill-tag.missing {
+  background: #f5e6e4;
+  color: var(--danger);
 }
 
 /* ---------- Trust seal (signature element) ---------- */
@@ -664,6 +691,48 @@ h1 {
 }
 .status-msg.error { color: var(--danger); }
 .status-msg.success { color: var(--trust); }
+
+/* ---------- Shared utilities ---------- */
+
+.card {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.field-narrow {
+  max-width: 160px;
+}
+
+.form-textarea {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  background: var(--paper-raised);
+  resize: vertical;
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+.btn-danger:hover { background: var(--danger); color: #fff; }
+
+.loading-state {
+  color: var(--ink-soft);
+  padding: 12px 16px;
+}
+
+.quote-box {
+  font-style: italic;
+  background: var(--paper);
+  padding: var(--space-3);
+  border-left: 3px solid var(--line);
+}
 
 @media (max-width: 560px) {
   .topbar, .dev-user-bar { padding: 14px 18px; }

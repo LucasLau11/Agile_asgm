@@ -13,6 +13,7 @@
     <nav>
       <a href="/UI/html/browse_job.html">Browse Jobs</a>
       <a href="/UI/html/my_application.html">My Applications</a>
+      <a href="/UI/html/messages.html?role=seeker">Messages</a>
       <a href="/UI/html/notifications.html">Notifications</a>
       <a href="/UI/html/profile.html">Profile</a>
     </nav>
@@ -22,15 +23,16 @@
   <div class="dev-user-bar" id="devUserBar"></div>
 
   <main class="page" id="pageContent">
-    <p class="subtitle">Loading job…</p>
+    <p class="loading-state">Loading job…</p>
   </main>
 
   <script src="../js/api.js"></script>
   <script>
-    renderDevUserBar("devUserBar");
+renderDevUserBar("devUserBar");
 
     const pageContent = document.getElementById("pageContent");
     const jobId = new URLSearchParams(location.search).get("id");
+    const seekerId = getCurrentSeekerId();
 
     async function loadJob() {
       if (!jobId) {
@@ -38,18 +40,47 @@
         return;
       }
       try {
-        const job = await fetchJob(jobId);
+        const job = await fetchJob(jobId, seekerId);
         const spotsLabel =
           job.positions_remaining === 0
             ? `<span class="spots-tag full">No spots left</span>`
             : `<span class="spots-tag">${job.positions_remaining} of ${job.positions_available} spots open</span>`;
+
+        // US-25: compatibility score, shown right next to the title —
+        // same badge style as the "Recommended for you" list on Browse Jobs.
+        const matchBadge =
+          job.match_percentage != null
+            ? `<span class="match-badge">${job.match_percentage}% match</span>`
+            : "";
+
+        // US-23/US-24: required skills, with the ones missing from the
+        // seeker's own profile visually called out (not just listed flat).
+        const missingSet = new Set((job.missing_skills || []).map((s) => s.toLowerCase()));
+        const skillsHtml = job.skills_required
+          .map((s) => {
+            const isMissing = missingSet.has(s.toLowerCase());
+            return `<span class="skill-tag${isMissing ? " missing" : ""}">${escapeHtml(s)}</span>`;
+          })
+          .join("");
+
+        let skillsGapNote = "";
+        if (job.match_percentage != null) {
+          skillsGapNote =
+            job.missing_skills && job.missing_skills.length > 0
+              ? `<p class="status-msg" style="margin-top:8px;">
+                   You're missing ${job.missing_skills.length} skill${job.missing_skills.length === 1 ? "" : "s"} for this role:
+                   ${job.missing_skills.map((s) => escapeHtml(s)).join(", ")}.
+                   <a href="/UI/html/profile.html">Update your profile</a> to improve your match.
+                 </p>`
+              : `<p class="status-msg success" style="margin-top:8px;">You have every skill this role requires.</p>`;
+        }
 
         pageContent.innerHTML = `
           <a href="browse_job.html" class="subtitle">&larr; Back to Browse Jobs</a>
 
           <div class="detail-header" style="margin-top:14px">
             <div>
-              <h1>${escapeHtml(job.title)}</h1>
+              <h1>${escapeHtml(job.title)} ${matchBadge}</h1>
               <p class="subtitle" style="margin-bottom:4px;">
                 ${escapeHtml(job.location || "Location not specified")}
                 &nbsp;•&nbsp; ${escapeHtml(job.job_type || "Full-time")}
@@ -57,11 +88,12 @@
               <p class="subtitle" style="margin-bottom:8px;">${escapeHtml(formatSalary(job.salary_min, job.salary_max))}</p>
               ${spotsLabel}
             </div>
-            ${trustSealHtml(job.credibility_score)}
+            ${trustSealHtml(job.credibility_score, job.credibility_reasons)}
           </div>
 
           <div style="margin:18px 0">
-            ${job.skills_required.map((s) => `<span class="skill-tag">${escapeHtml(s)}</span>`).join("")}
+            ${skillsHtml}
+            ${skillsGapNote}
           </div>
 
           <div class="detail-description">${escapeHtml(job.description)}</div>
@@ -70,6 +102,7 @@
             <button class="btn btn-primary" id="applyBtn" ${job.positions_remaining === 0 ? "disabled" : ""}>
               ${job.positions_remaining === 0 ? "No spots remaining" : "Apply for this job"}
             </button>
+            <button class="btn btn-secondary" id="messageEmployerBtn">Message Employer</button>
             <p class="status-msg" id="applyStatus"></p>
           </div>
         `;
@@ -80,6 +113,13 @@ document.getElementById("applyBtn").addEventListener("click", () => {
   } else {
     alert("Error: No active Job ID detected.");
   }
+});
+
+// US-40: jump straight into (or start) a conversation with this job's
+// employer, tagged with this job.
+document.getElementById("messageEmployerBtn").addEventListener("click", () => {
+  window.location.href =
+    `/UI/html/messages.html?role=seeker&other=${job.employer_id}&job=${job.id}`;
 });
       } catch (err) {
         pageContent.innerHTML = `<p class="status-msg error">Couldn't load this job: ${escapeHtml(err.message)}</p>`;

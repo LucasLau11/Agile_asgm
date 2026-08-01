@@ -15,6 +15,7 @@
     <nav>
       <a href="/UI/html/browse_job.html">Browse Jobs</a>
       <a href="/UI/html/my_application.html">My Applications</a>
+      <a href="/UI/html/messages.html?role=seeker">Messages</a>
       <a href="/UI/html/notifications.html">Notifications</a>
       <a href="/UI/html/profile.html">Profile</a>
     </nav>
@@ -28,8 +29,10 @@
     <h1>Notifications</h1>
     <p class="subtitle">Stay updated with your application progress.</p>
 
+    <button class="btn btn-secondary" id="clearAllBtn" style="margin-bottom:14px;">Clear all</button>
+
     <div class="notification-list" id="notificationList">
-      <p class="subtitle">Loading notifications...</p>
+      <p class="loading-state">Loading notifications...</p>
     </div>
   </main>
 
@@ -45,6 +48,29 @@
       `;
     }
 
+    // Fallbacks in case api.js on the server doesn't have these yet —
+    // keeps this page working even if that file is out of sync.
+    if (typeof deleteNotification !== "function") {
+      window.deleteNotification = function (notificationId, role, userId) {
+        return fetch(`/api/notifications/${notificationId}?role=${role}&user_id=${userId}`, {
+          method: "DELETE",
+        }).then((res) => {
+          if (!res.ok) throw new Error("Failed to remove notification");
+          return res.json();
+        });
+      };
+    }
+    if (typeof clearAllNotifications !== "function") {
+      window.clearAllNotifications = function (role, userId) {
+        return fetch(`/api/notifications?role=${role}&user_id=${userId}`, {
+          method: "DELETE",
+        }).then((res) => {
+          if (!res.ok) throw new Error("Failed to clear notifications");
+          return res.json();
+        });
+      };
+    }
+
     function escapeHtml(str) {
       if (!str) return "";
       return str
@@ -57,13 +83,14 @@
 
     function notificationCardHtml(note) {
       return `
-        <div class="notification-card">
+        <div class="card notification-card" data-id="${note.id}">
           <div class="notification-icon">🔔</div>
           <div class="notification-content">
             <h3>${escapeHtml(note.title)}</h3>
             <p>${escapeHtml(note.message)}</p>
             <div class="notification-time">${escapeHtml(note.time_ago)}</div>
           </div>
+          <button class="btn btn-secondary remove-notification-btn" data-id="${note.id}" title="Remove">✕</button>
         </div>
       `;
     }
@@ -76,15 +103,12 @@
         const notifications = await response.json();
 
         if (notifications.length === 0) {
-          listEl.innerHTML = `
-            <p class="subtitle" style="text-align:center; color:#777; margin-top:30px;">
-              You don't have any notifications yet.
-            </p>
-          `;
+          listEl.innerHTML = `<div class="empty-state">You don't have any notifications yet.</div>`;
           return;
         }
 
         listEl.innerHTML = notifications.map(notificationCardHtml).join("");
+        wireRemoveButtons();
       } catch (err) {
         console.error(err);
         listEl.innerHTML = `
@@ -94,6 +118,32 @@
         `;
       }
     }
+
+    function wireRemoveButtons() {
+      document.querySelectorAll(".remove-notification-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = Number(btn.dataset.id);
+          btn.disabled = true;
+          try {
+            await deleteNotification(id, "seeker", seekerId);
+            await loadNotifications();
+          } catch (err) {
+            alert(`Couldn't remove notification: ${err.message}`);
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    document.getElementById("clearAllBtn").addEventListener("click", async () => {
+      if (!confirm("Remove all notifications? This can't be undone.")) return;
+      try {
+        await clearAllNotifications("seeker", seekerId);
+        await loadNotifications();
+      } catch (err) {
+        alert(`Couldn't clear notifications: ${err.message}`);
+      }
+    });   
 
     document.addEventListener("DOMContentLoaded", loadNotifications);
   </script>

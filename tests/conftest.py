@@ -1,6 +1,7 @@
 import os
 
 os.environ["DATABASE_URL"] = "sqlite:///./test_job_portal.db"
+os.environ["MESSAGE_ENCRYPTION_KEY_FILE"] = "./test_message_encryption.key"
 
 import pytest
 from fastapi.testclient import TestClient

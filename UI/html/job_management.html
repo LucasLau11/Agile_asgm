@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Job Posting Management</title>
     <link rel="stylesheet" href="../css/style.css">
 </head>
@@ -13,6 +14,8 @@
     <nav>
       <a href="/UI/html/job_management.html">My Postings</a>
       <a href="/UI/html/employer_applications.html">Applications</a>
+      <a href="/UI/html/messages.html?role=employer">Messages</a>
+      <a href="/UI/html/employer_notifications.html">Notifications</a>
     </nav>
     <a href="/UI/html/browse_job.html" class="role-switch">Job Seeker</a>
   </div>
@@ -95,17 +98,17 @@
 
             <label class="job-meta">Min Salary (RM/month)</label>
             <div class="search-bar">
-                <input type="number" id="formSalaryMin" placeholder="e.g. 3000" min="0" style="max-width:160px;">
+                <input type="number" id="formSalaryMin" placeholder="e.g. 3000" min="0" class="field-narrow">
             </div>
 
             <label class="job-meta">Max Salary (RM/month)</label>
             <div class="search-bar">
-                <input type="number" id="formSalaryMax" placeholder="e.g. 8000" min="0" style="max-width:160px;">
+                <input type="number" id="formSalaryMax" placeholder="e.g. 8000" min="0" class="field-narrow">
             </div>
 
             <label class="job-meta">Positions Available</label>
             <div class="search-bar">
-                <input type="number" id="formPositions" min="1" max="50" step="1" value="1" style="max-width:120px;">
+                <input type="number" id="formPositions" min="1" max="50" step="1" value="1" class="field-narrow">
             </div>
         </div>
 
@@ -131,8 +134,7 @@
 
         <div class="profile-section">
             <h2>Description</h2>
-            <textarea id="formDescription" rows="6"
-                style="width:100%; padding:11px 14px; border:1px solid var(--line); border-radius:var(--radius); font-family:var(--font-body); font-size:0.95rem; background:var(--paper-raised); resize:vertical;"
+            <textarea id="formDescription" rows="6" class="form-textarea"
                 placeholder="Describe the role, responsibilities, and requirements..."></textarea>
         </div>
 
@@ -186,7 +188,7 @@ let editingJobData = null;   // full record of the job being edited, so fields
 
 async function loadJobs() {
     const list = document.getElementById("jobList");
-    list.innerHTML = `<div class="empty-state">Loading job postings…</div>`;
+    list.innerHTML = `<p class="loading-state">Loading job postings…</p>`;
 
     const searchTerm = document.getElementById("searchBox").value.trim();
     const statusValue = document.getElementById("statusFilter").value; // all / active / draft / closed
@@ -261,7 +263,7 @@ function jobCardTemplate(job) {
     }
 
     return `
-        <div class="job-card" data-status="${job.status}" data-id="${job.id}">
+        <div class="card job-card" data-status="${job.status}" data-id="${job.id}">
             <div class="job-main">
                 <h3>${escapeHtml(job.title)}</h3>
                 <div class="job-meta">${escapeHtml(job.location || "Location not set")} • ${escapeHtml(job.job_type)} • ${escapeHtml(formatSalary(job.salary_min, job.salary_max))}</div>
@@ -495,7 +497,7 @@ async function saveJob() {
     };
 
     const saveBtn = document.getElementById("saveJobBtn");
-    saveBtn.disabled = true;
+    setButtonBusy(saveBtn, true, "Saving…");
     try {
         if (editingJobId) {
             await updateEmployerJob(employerId, editingJobId, payload);
@@ -509,7 +511,7 @@ async function saveJob() {
         // and flattened validation errors (see apiFetch in api.js).
         formError(err.message);
     } finally {
-        saveBtn.disabled = false;
+        setButtonBusy(saveBtn, false);
     }
 }
 

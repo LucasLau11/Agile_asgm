@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>My Profile</title>
   <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/application.css" />
 </head>
 <body>
   <header class="topbar">
@@ -13,6 +14,7 @@
     <nav>
       <a href="/UI/html/browse_job.html">Browse Jobs</a>
       <a href="/UI/html/my_application.html">My Applications</a>
+      <a href="/UI/html/messages.html?role=seeker">Messages</a>
       <a href="/UI/html/notifications.html">Notifications</a>
       <a href="/UI/html/profile.html">Profile</a>
     </nav>
@@ -294,8 +296,10 @@
     document.getElementById("infoForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const statusEl = document.getElementById("infoStatus");
+      const submitBtn = e.target.querySelector('button[type="submit"]');
       statusEl.textContent = "";
       if (!validateInfoForm()) return;
+      setButtonBusy(submitBtn, true, "Saving…");
       try {
         profileData = await updateProfileInfo(seekerId, {
           full_name: document.getElementById("fullNameInput").value.trim(),
@@ -312,6 +316,8 @@
       } catch (err) {
         statusEl.textContent = `Couldn't save: ${err.message}`;
         statusEl.className = "status-msg error";
+      } finally {
+        setButtonBusy(submitBtn, false);
       }
     });
 

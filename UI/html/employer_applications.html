@@ -15,6 +15,8 @@
     <nav>
       <a href="/UI/html/job_management.html">My Postings</a>
       <a href="/UI/html/employer_applications.html">Applications</a>
+      <a href="/UI/html/messages.html?role=employer">Messages</a>
+      <a href="/UI/html/employer_notifications.html">Notifications</a>
     </nav>
     <a href="/UI/html/browse_job.html" class="role-switch">Job Seeker</a>
   </div>
@@ -33,7 +35,7 @@
     <br>
 
     <div class="applicant-list" id="applicantList">
-      <p class="subtitle">Loading applications...</p>
+      <p class="loading-state">Loading applications...</p>
     </div>
   </main>
 
@@ -69,8 +71,8 @@
     function statusClassFor(status) {
       if (status === "Screening") return "status-screening";
       if (status === "Interview") return "status-interview";
+      if (status === "Offered") return "status-offered";
       if (status === "Rejected") return "status-rejected";
-      if (status === "Offered") return "status-interview";
       return "status-applied";
     }
 
@@ -80,7 +82,7 @@
         .join("");
 
       return `
-        <div class="applicant-card">
+        <div class="card applicant-card">
           <div class="applicant-header">
             <div class="applicant-name">${escapeHtml(applicant.seeker)}</div>
             <span class="application-status ${statusClassFor(applicant.status)}">
@@ -113,11 +115,7 @@
         document.getElementById("totalCount").textContent = applicants.length;
 
         if (applicants.length === 0) {
-          listEl.innerHTML = `
-            <p class="subtitle" style="text-align:center; color:#777; margin-top:30px;">
-              No one has applied to your job postings yet.
-            </p>
-          `;
+          listEl.innerHTML = `<div class="empty-state">No one has applied to your job postings yet.</div>`;
           return;
         }
 

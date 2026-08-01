@@ -13,6 +13,7 @@
     <nav>
       <a href="/UI/html/browse_job.html">Browse Jobs</a>
       <a href="/UI/html/my_application.html">My Applications</a>
+      <a href="/UI/html/messages.html?role=seeker">Messages</a>
       <a href="/UI/html/notifications.html">Notifications</a>
       <a href="/UI/html/profile.html">Profile</a>
     </nav>
@@ -28,6 +29,12 @@
     <form id="searchForm">
       <div class="search-bar">
         <input type="text" id="keywordInput" placeholder="Keyword (e.g. 'backend', 'designer')" />
+        <select id="sortInput">
+          <option value="newest">Newest first</option>
+          <option value="match">Best match</option>
+          <option value="salary_high">Salary: high to low</option>
+          <option value="salary_low">Salary: low to high</option>
+        </select>
         <button type="button" class="btn btn-secondary" id="toggleFiltersBtn">Advanced filters</button>
         <button type="submit" class="btn btn-primary">Search</button>
       </div>
@@ -52,10 +59,6 @@
             <label for="salaryMinInput">Min salary (RM/month)</label>
             <input type="number" id="salaryMinInput" placeholder="e.g. 3000" min="0" />
           </div>
-          <div class="filter-field">
-            <label for="salaryMaxInput">Max salary (RM/month)</label>
-            <input type="number" id="salaryMaxInput" placeholder="e.g. 8000" min="0" />
-          </div>
         </div>
         <button type="button" class="btn btn-secondary" id="clearFiltersBtn">Clear filters</button>
       </div>
@@ -69,7 +72,7 @@
 
     <h2 class="section-heading" id="allJobsHeading" style="display:none;">All jobs</h2>
     <div id="jobList" class="job-list">
-      <p class="subtitle">Loading jobs…</p>
+      <p class="loading-state">Loading jobs…</p>
     </div>
   </main>
 
@@ -103,7 +106,11 @@
       document.getElementById("stateInput").value = "";
       document.getElementById("jobTypeInput").value = "";
       document.getElementById("salaryMinInput").value = "";
-      document.getElementById("salaryMaxInput").value = "";
+      document.getElementById("sortInput").value = "newest";
+      loadJobs(currentFilters());
+    });
+
+    document.getElementById("sortInput").addEventListener("change", () => {
       loadJobs(currentFilters());
     });
 
@@ -113,13 +120,14 @@
         state: document.getElementById("stateInput").value,
         jobType: document.getElementById("jobTypeInput").value,
         salaryMin: document.getElementById("salaryMinInput").value,
-        salaryMax: document.getElementById("salaryMaxInput").value,
+        seekerId,
+        sortBy: document.getElementById("sortInput").value,
       };
     }
 
-    function jobCardHtml(job, { showMatch = false } = {}) {
+    function jobCardHtml(job) {
       const matchBadge =
-        showMatch && job.match_percentage != null
+        job.match_percentage != null
           ? `<span class="match-badge">${job.match_percentage}% match</span>`
           : "";
       const spotsLabel =
@@ -127,8 +135,16 @@
           ? `<span class="spots-tag full">No spots left</span>`
           : `<span class="spots-tag">${job.positions_remaining} of ${job.positions_available} spots open</span>`;
 
+      const missingSet = new Set((job.missing_skills || []).map((s) => s.toLowerCase()));
+      const skillsHtml = job.skills_required
+        .map((s) => {
+          const isMissing = missingSet.has(s.toLowerCase());
+          return `<span class="skill-tag${isMissing ? " missing" : ""}">${escapeHtml(s)}</span>`;
+        })
+        .join("");
+
       return `
-        <a class="job-card" href="job_detail.html?id=${job.id}">
+        <a class="card job-card" href="job_detail.html?id=${job.id}">
           <div class="job-main">
             <h3>${escapeHtml(job.title)} ${matchBadge}</h3>
             <div class="job-meta">
@@ -138,11 +154,10 @@
             </div>
             <div style="margin-bottom:6px;">${spotsLabel}</div>
             <div>
-              ${job.skills_required.map((s) => `<span class="skill-tag">${escapeHtml(s)}</span>`).join("") ||
-                `<span style="color:var(--ink-soft); font-size:0.85rem;">No skills listed</span>`}
+              ${skillsHtml || `<span style="color:var(--ink-soft); font-size:0.85rem;">No skills listed</span>`}
             </div>
           </div>
-          ${trustSealHtml(job.credibility_score)}
+          ${trustSealHtml(job.credibility_score, job.credibility_reasons)}
         </a>`;
     }
 
@@ -160,7 +175,7 @@
 
     async function loadJobs(filters = {}) {
       const jobListEl = document.getElementById("jobList");
-      jobListEl.innerHTML = `<p class="subtitle">Loading jobs…</p>`;
+      jobListEl.innerHTML = `<p class="loading-state">Loading jobs…</p>`;
       try {
         const jobs = await fetchJobs(filters);
         renderJobs(jobs);
@@ -176,7 +191,7 @@
         document.getElementById("recommendedSection").style.display = "block";
         document.getElementById("allJobsHeading").style.display = "block";
         document.getElementById("recommendedList").innerHTML = jobs
-          .map((job) => jobCardHtml(job, { showMatch: true }))
+          .map((job) => jobCardHtml(job))
           .join("");
       } catch (err) {
         // Recommendations are a bonus feature — fail silently rather than
@@ -190,7 +205,7 @@
       loadJobs(currentFilters());
     });
 
-    loadJobs();
+    loadJobs(currentFilters());
     loadRecommended();
   </script>
 </body>

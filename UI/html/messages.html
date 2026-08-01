@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Messages</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/messages.css" />
+</head>
+<body>
+
+  <header class="topbar" id="topbarHeader"></header>
+
+  <div class="dev-user-bar" id="devUserBar"></div>
+
+  <main class="page">
+    <h1>Messages</h1>
+    <p class="subtitle" id="pageSubtitle">Loading…</p>
+
+    <div class="messages-shell">
+      <section class="conversation-pane">
+        <div class="conversation-pane-header">
+          <h2>Chats</h2>
+          <button class="btn btn-secondary" id="newMessageBtn" type="button">+ New</button>
+        </div>
+        <div class="conversation-list" id="conversationList">
+          <p class="loading-state">Loading conversations…</p>
+        </div>
+      </section>
+
+      <section class="chat-pane" id="chatPane">
+        <div class="empty-chat-state">Select a conversation, or start a new one.</div>
+      </section>
+    </div>
+  </main>
+
+  <div class="modal-overlay" id="newMessageModal" style="display:none;">
+    <div class="modal-box">
+      <h3>New Message</h3>
+      <label for="recipientSelect" style="display:block; font-weight:600; margin-bottom:6px;">To</label>
+      <select id="recipientSelect"></select>
+      <label for="newMessageBody" style="display:block; font-weight:600; margin-bottom:6px;">Message</label>
+      <textarea id="newMessageBody" rows="4" placeholder="Type your message…"></textarea>
+      <p class="status-msg error" id="newMessageError" style="display:none;"></p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="cancelNewMessage" type="button">Cancel</button>
+        <button class="btn btn-primary" id="sendNewMessage" type="button">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="interviewModal" style="display:none;">
+    <div class="modal-box">
+      <h3>Schedule Interview</h3>
+      <label for="interviewDateTime" style="display:block; font-weight:600; margin-bottom:6px;">Date &amp; time</label>
+      <input type="datetime-local" id="interviewDateTime" style="width:100%; margin-bottom:12px;" />
+
+      <label for="interviewDuration" style="display:block; font-weight:600; margin-bottom:6px;">Duration (minutes)</label>
+      <input type="number" id="interviewDuration" value="30" min="15" max="480" step="15" style="width:100%; margin-bottom:12px;" />
+
+      <label for="interviewMode" style="display:block; font-weight:600; margin-bottom:6px;">Mode</label>
+      <select id="interviewMode" style="width:100%; margin-bottom:12px;">
+        <option value="video">Video call</option>
+        <option value="phone">Phone call</option>
+        <option value="in_person">In person</option>
+      </select>
+
+      <label for="interviewLocation" style="display:block; font-weight:600; margin-bottom:6px;">Location / link</label>
+      <input type="text" id="interviewLocation" placeholder="Meeting link or address" style="width:100%; margin-bottom:12px;" />
+
+      <label for="interviewNotes" style="display:block; font-weight:600; margin-bottom:6px;">Notes (optional)</label>
+      <textarea id="interviewNotes" rows="3" placeholder="Anything the candidate should know…"></textarea>
+
+      <p class="status-msg error" id="interviewError" style="display:none;"></p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="cancelInterview" type="button">Cancel</button>
+        <button class="btn btn-primary" id="sendInterview" type="button">Send Invitation</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const role = params.get("role") === "employer" ? "employer" : "seeker";
+    const otherRole = role === "seeker" ? "employer" : "seeker";
+    const userId = role === "employer" ? getCurrentEmployerId() : getCurrentSeekerId();
+
+    const deepLinkOtherId = params.get("other") ? Number(params.get("other")) : null;
+    const deepLinkJobId = params.get("job") ? Number(params.get("job")) : null;
+
+    const EDIT_WINDOW_MINUTES = 15;
+    const ALLOWED_ATTACHMENT_TYPES = ".jpg,.jpeg,.png,.gif,.webp,.pdf,.docx";
+    const THREAD_POLL_MS = 4000;
+    const LIST_POLL_MS = 8000;
+
+    let conversations = [];
+    let activeConversationId = null;
+    let activeThread = null;
+    let pendingFile = null; // file staged in the composer, awaiting send
+    let editingMessageId = null; // suppress poll re-renders while editing
+
+    // ---------- Topbar / dev bar ----------
+
+    function renderTopbar() {
+      const header = document.getElementById("topbarHeader");
+      if (role === "seeker") {
+        header.innerHTML = `
+          <div class="brand">Job Portal</div>
+          <div class="topbar-right">
+            <nav>
+              <a href="/UI/html/browse_job.html">Browse Jobs</a>
+              <a href="/UI/html/my_application.html">My Applications</a>
+              <a href="/UI/html/messages.html?role=seeker" class="active">Messages</a>
+              <a href="/UI/html/notifications.html">Notifications</a>
+              <a href="/UI/html/profile.html">Profile</a>
+            </nav>
+            <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
+          </div>`;
+      } else {
+        header.innerHTML = `
+          <div class="brand">Job Portal</div>
+          <div class="topbar-right">
+            <nav>
+              <a href="/UI/html/job_management.html">My Postings</a>
+              <a href="/UI/html/employer_applications.html">Applications</a>
+              <a href="/UI/html/messages.html?role=employer" class="active">Messages</a>
+              <a href="/UI/html/employer_notifications.html">Notifications</a>
+            </nav>
+            <a href="/UI/html/browse_job.html" class="role-switch">Job Seeker</a>
+          </div>`;
+      }
+    }
+
+    function renderDevBar() {
+      if (role === "seeker") {
+        renderDevUserBar("devUserBar");
+      } else {
+        renderDevEmployerBar("devUserBar");
+      }
+    }
+
+    function initialsFor(name) {
+      return (name || "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+    }
+
+    // ---------- Conversation list ----------
+
+    function renderConversationList() {
+      const list = document.getElementById("conversationList");
+      if (conversations.length === 0) {
+        list.innerHTML = `<div class="empty-state">No conversations yet — start one with "+ New".</div>`;
+        return;
+      }
+      list.innerHTML = conversations.map((c) => `
+        <div class="conversation-item ${c.id === activeConversationId ? "active" : ""}" data-id="${c.id}">
+          <div class="conversation-avatar">${escapeHtml(initialsFor(c.other_party_name))}</div>
+          <div class="conversation-summary">
+            <div class="name">
+              <span>${escapeHtml(c.other_party_name)}</span>
+              <span class="time">${timeAgo(c.last_message_at)}</span>
+            </div>
+            <div class="preview">
+              ${escapeHtml(c.last_message_preview || "No messages yet")}
+              ${c.unread_count > 0 ? `<span class="unread-badge">${c.unread_count}</span>` : ""}
+            </div>
+          </div>
+          <button class="conversation-delete" data-id="${c.id}" title="Delete conversation">🗑</button>
+        </div>
+      `).join("");
+
+      list.querySelectorAll(".conversation-item").forEach((el) => {
+        el.addEventListener("click", (e) => {
+          if (e.target.closest(".conversation-delete")) return;
+          openConversation(Number(el.dataset.id));
+        });
+      });
+      list.querySelectorAll(".conversation-delete").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const id = Number(btn.dataset.id);
+          if (!confirm("Delete this conversation from your inbox? The other person will still see it.")) return;
+          try {
+            await deleteConversation(id, role, userId);
+            if (id === activeConversationId) {
+              activeConversationId = null;
+              activeThread = null;
+              document.getElementById("chatPane").innerHTML =
+                `<div class="empty-chat-state">Select a conversation, or start a new one.</div>`;
+            }
+            await loadConversations();
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+      });
+    }
+
+    async function loadConversations() {
+      try {
+        conversations = await fetchConversations(role, userId);
+        document.getElementById("pageSubtitle").textContent =
+          role === "seeker" ? "Your conversations with employers." : "Your conversations with job seekers.";
+        renderConversationList();
+      } catch (err) {
+        document.getElementById("conversationList").innerHTML =
+          `<p class="status-msg error" style="padding:16px;">${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    // ---------- Chat thread ----------
+
+    function readReceiptIcon(m) {
+      return m.is_read
+        ? `<span class="receipt read" title="Read">✓✓</span>`
+        : `<span class="receipt sent" title="Sent">✓</span>`;
+    }
+
+    function attachmentHtml(m) {
+      if (!m.attachment_url) return "";
+      const authedUrl = attachmentUrlFor(m.attachment_url, role, userId);
+      if (m.attachment_type === "image") {
+        return `<a href="${authedUrl}" target="_blank" rel="noopener">
+          <img class="attachment-image" src="${authedUrl}" alt="${escapeHtml(m.attachment_filename || "attachment")}" />
+        </a>`;
+      }
+      return `<a class="attachment-file" href="${authedUrl}" target="_blank" rel="noopener">
+        📄 ${escapeHtml(m.attachment_filename || "Download file")}
+      </a>`;
+    }
+
+    function canEdit(m, mine) {
+      if (!mine || m.is_deleted) return false;
+      const ageMinutes = (Date.now() - new Date(m.created_at.endsWith("Z") ? m.created_at : m.created_at + "Z").getTime()) / 60000;
+      return ageMinutes <= EDIT_WINDOW_MINUTES;
+    }
+
+    function formatInterviewDateTime(iso) {
+      const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
+      return d.toLocaleString(undefined, {
+        weekday: "short", month: "short", day: "numeric",
+        hour: "numeric", minute: "2-digit",
+      });
+    }
+
+    function interviewModeLabel(mode) {
+      if (mode === "video") return "Video call";
+      if (mode === "phone") return "Phone call";
+      return "In person";
+    }
+
+    function interviewStatusBadge(status) {
+      if (status === "accepted") return `<span class="interview-status accepted">✓ Accepted</span>`;
+      if (status === "declined") return `<span class="interview-status declined">✕ Declined</span>`;
+      if (status === "cancelled") return `<span class="interview-status declined">Cancelled</span>`;
+      return `<span class="interview-status pending">Awaiting response</span>`;
+    }
+
+    function interviewBubbleHtml(m) {
+      const mine = m.sender_role === role;
+      const inv = m.interview;
+      const isRecipientSeeker = role === "seeker" && !mine;
+      const canRespond = isRecipientSeeker && inv.status === "pending";
+      // Only the employer who sent it can reschedule/cancel, and only
+      // while it's still a live invitation (not already declined/cancelled).
+      const canManage = role === "employer" && mine && (inv.status === "pending" || inv.status === "accepted");
+
+      return `
+        <div class="bubble-row ${mine ? "mine" : ""}" data-id="${m.id}">
+          <div class="bubble interview-bubble">
+            ${m.job_title ? `<span class="job-tag">Re: ${escapeHtml(m.job_title)}</span>` : ""}
+            <div class="interview-card">
+              <div class="interview-title">📅 Interview Invitation</div>
+              <div class="interview-detail"><strong>When:</strong> ${escapeHtml(formatInterviewDateTime(inv.scheduled_at))} (${inv.duration_minutes} min)</div>
+              <div class="interview-detail"><strong>Mode:</strong> ${escapeHtml(interviewModeLabel(inv.mode))}</div>
+              ${inv.location_or_link ? `<div class="interview-detail"><strong>Where:</strong> ${escapeHtml(inv.location_or_link)}</div>` : ""}
+              ${inv.notes ? `<div class="interview-detail">${escapeHtml(inv.notes)}</div>` : ""}
+              <div class="interview-detail">${interviewStatusBadge(inv.status)}</div>
+              ${canRespond ? `
+                <div class="interview-actions">
+                  <button class="btn btn-secondary" data-interview-action="declined" data-id="${m.id}">Decline</button>
+                  <button class="btn btn-primary" data-interview-action="accepted" data-id="${m.id}">Accept</button>
+                </div>
+              ` : ""}
+              ${canManage ? `
+                <div class="interview-actions">
+                  <button class="btn btn-secondary" data-interview-manage="reschedule" data-id="${m.id}">Reschedule</button>
+                  <button class="btn btn-secondary" data-interview-manage="cancel" data-id="${m.id}">Cancel</button>
+                </div>
+              ` : ""}
+            </div>
+            <span class="time">${formatMessageDateTime(m.created_at)}</span>
+          </div>
+        </div>`;
+    }
+
+    function bubbleHtml(m) {
+      if (m.message_type === "interview_invite" && m.interview) {
+        return interviewBubbleHtml(m);
+      }
+      const mine = m.sender_role === role;
+      if (m.is_deleted) {
+        return `
+          <div class="bubble-row ${mine ? "mine" : ""}" data-id="${m.id}">
+            <div class="bubble deleted-bubble">
+              <em>This message was deleted</em>
+              <span class="time">${formatMessageDateTime(m.created_at)}</span>
+            </div>
+          </div>`;
+      }
+
+      const actions = [];
+      if (canEdit(m, mine)) actions.push(`<button class="bubble-action" data-action="edit" data-id="${m.id}">Edit</button>`);
+      if (mine) actions.push(`<button class="bubble-action" data-action="delete-everyone" data-id="${m.id}">Delete for everyone</button>`);
+      actions.push(`<button class="bubble-action" data-action="delete-me" data-id="${m.id}">Delete for me</button>`);
+
+      return `
+        <div class="bubble-row ${mine ? "mine" : ""}" data-id="${m.id}">
+          <div class="bubble">
+            ${m.job_title ? `<span class="job-tag">Re: ${escapeHtml(m.job_title)}</span>` : ""}
+            ${attachmentHtml(m)}
+            ${m.body ? `<span class="bubble-text">${escapeHtml(m.body)}</span>` : ""}
+            <span class="time">
+              ${formatMessageDateTime(m.created_at)}
+              ${m.is_edited ? `<span class="edited-tag">(edited)</span>` : ""}
+              ${mine ? readReceiptIcon(m) : ""}
+            </span>
+            <div class="bubble-menu-wrap">
+              <button class="bubble-menu-toggle" data-id="${m.id}" title="Message actions">⋮</button>
+              <div class="bubble-menu" id="menu-${m.id}" style="display:none;">${actions.join("")}</div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    /** Renders just the message list — called on first open AND on every
+     * poll tick, so it deliberately never touches the composer (draft text,
+     * staged attachment) or anything outside #chatMessages. */
+    function renderMessagesInto(threadData, { preserveScroll = false } = {}) {
+      const container = document.getElementById("chatMessages");
+      if (!container) return;
+      const wasNearBottom = preserveScroll
+        ? container.scrollHeight - container.scrollTop - container.clientHeight < 80
+        : true;
+
+      container.innerHTML = threadData.messages.map(bubbleHtml).join("");
+      wireBubbleMenus();
+
+      if (wasNearBottom) container.scrollTop = container.scrollHeight;
+    }
+
+    function threadSignature(threadData) {
+      // Cheap way to detect "did anything actually change" before
+      // re-rendering on a poll tick, so we're not redrawing every 4s for
+      // no reason (and so open bubble menus don't keep getting slammed shut).
+      // Includes interview.status so Accept/Decline/Reschedule/Cancel (which
+      // change status but not body/is_read/is_deleted/is_edited/attachment_url)
+      // are actually detected as changes.
+      return JSON.stringify(
+        threadData.messages.map((m) => [
+          m.id, m.body, m.is_read, m.is_deleted, m.is_edited, m.attachment_url,
+          m.interview ? m.interview.status : null,
+        ])
+      );
+    }
+
+    function renderChat(threadData) {
+      activeThread = threadData;
+      const pane = document.getElementById("chatPane");
+      const blockedNotice = threadData.blocked_by_me
+        ? "You blocked this user. Unblock them to resume messaging."
+        : "Messaging is unavailable because this conversation has been blocked.";
+      const blockControl = threadData.blocked_by_me
+        ? `<button class="btn btn-secondary" id="unblockConvoBtn" type="button">Unblock user</button>`
+        : `<button class="btn btn-danger" id="blockConvoBtn" type="button">Block user</button>`;
+
+      pane.innerHTML = `
+        <div class="chat-pane-header">
+          <span>${escapeHtml(threadData.other_party_name)}</span>
+          ${blockControl}
+          <button class="btn btn-secondary" id="deleteConvoBtn" type="button" title="Delete conversation">🗑 Delete chat</button>
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="attachment-preview" id="attachmentPreview" style="display:none;"></div>
+        <div class="chat-composer">
+          <button class="btn btn-secondary attach-btn" id="attachBtn" type="button" title="Attach image or file">📎</button>
+          ${role === "employer" ? `<button class="btn btn-secondary" id="interviewBtn" type="button" title="Schedule an interview">📅 Interview</button>` : ""}
+          <input type="file" id="attachInput" accept="${ALLOWED_ATTACHMENT_TYPES}" style="display:none;" />
+          <textarea id="composerInput" placeholder="Type a message…"></textarea>
+          <button class="btn btn-primary" id="composerSend" type="button">Send</button>
+        </div>
+      `;
+
+      renderMessagesInto(threadData);
+      wireComposer(threadData);
+
+      if (threadData.is_blocked) {
+        document.getElementById("chatPane").insertAdjacentHTML(
+          "beforeend", `<div class="blocked-notice">${escapeHtml(blockedNotice)}</div>`
+        );
+        document.querySelectorAll("#chatPane .chat-composer button, #chatPane .chat-composer textarea").forEach((el) => {
+          el.disabled = true;
+        });
+      }
+
+      if (role === "employer") {
+        document.getElementById("interviewBtn").addEventListener("click", () => {
+          openInterviewModal(threadData.other_party_id);
+        });
+      }
+
+      const blockButton = document.getElementById("blockConvoBtn");
+      const unblockButton = document.getElementById("unblockConvoBtn");
+      if (blockButton) {
+        blockButton.addEventListener("click", async () => {
+          if (!confirm(`Block ${threadData.other_party_name}? Neither of you will be able to send new messages until you unblock them.`)) return;
+          try {
+            await blockConversation(threadData.conversation_id, role, userId);
+            await loadConversations();
+            await refreshActiveThread({ force: true });
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+      }
+      if (unblockButton) {
+        unblockButton.addEventListener("click", async () => {
+          try {
+            await unblockConversation(threadData.conversation_id, role, userId);
+            await loadConversations();
+            await refreshActiveThread({ force: true });
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+      }
+
+      document.getElementById("deleteConvoBtn").addEventListener("click", async () => {
+        if (!confirm("Delete this conversation from your inbox? The other person will still see it.")) return;
+        try {
+          await deleteConversation(threadData.conversation_id, role, userId);
+          activeConversationId = null;
+          activeThread = null;
+          document.getElementById("chatPane").innerHTML =
+            `<div class="empty-chat-state">Select a conversation, or start a new one.</div>`;
+          await loadConversations();
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+    }
+
+    function wireBubbleMenus() {
+      document.querySelectorAll(".bubble-menu-toggle").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const menu = document.getElementById(`menu-${btn.dataset.id}`);
+          const isOpen = menu.style.display === "block";
+          document.querySelectorAll(".bubble-menu").forEach((m) => (m.style.display = "none"));
+          menu.style.display = isOpen ? "none" : "block";
+        });
+      });
+      document.addEventListener("click", () => {
+        document.querySelectorAll(".bubble-menu").forEach((m) => (m.style.display = "none"));
+      }, { once: true });
+
+      document.querySelectorAll(".bubble-action").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const id = Number(btn.dataset.id);
+          const action = btn.dataset.action;
+          if (action === "edit") startEditingBubble(id);
+          if (action === "delete-me") await handleDelete(id, "me");
+          if (action === "delete-everyone") {
+            if (confirm("Delete this message for everyone? This can't be undone.")) {
+              await handleDelete(id, "everyone");
+            }
+          }
+        });
+      });
+
+      document.querySelectorAll("[data-interview-action]").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const messageId = Number(btn.dataset.id);
+          const response = btn.dataset.interviewAction; // "accepted" | "declined"
+          const label = response === "accepted" ? "accept" : "decline";
+          if (!confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} this interview invitation?`)) return;
+          try {
+            await respondToInterview(messageId, userId, response);
+            await loadConversations();
+            await refreshActiveThread({ force: true });
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+      });
+
+      document.querySelectorAll("[data-interview-manage]").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const messageId = Number(btn.dataset.id);
+          const action = btn.dataset.interviewManage; // "reschedule" | "cancel"
+
+          if (action === "cancel") {
+            if (!confirm("Cancel this interview invitation? The candidate will be notified.")) return;
+            try {
+              await cancelInterview(messageId, userId);
+              await loadConversations();
+              await refreshActiveThread({ force: true });
+            } catch (err) {
+              alert(err.message);
+            }
+            return;
+          }
+
+          // action === "reschedule" — reopen the modal pre-filled with the
+          // existing details, editing this invite instead of creating a new one.
+          const message = activeThread.messages.find((mm) => mm.id === messageId);
+          if (!message) return;
+          openInterviewModal(activeThread.other_party_id, {
+            messageId,
+            invite: message.interview,
+          });
+        });
+      });
+    }
+
+    async function handleDelete(messageId, scope) {
+      try {
+        await deleteMessage(messageId, role, userId, scope);
+        await loadConversations();
+        await refreshActiveThread({ force: true });
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    function startEditingBubble(messageId) {
+      const message = activeThread.messages.find((m) => m.id === messageId);
+      if (!message) return;
+      editingMessageId = messageId;
+      const row = document.querySelector(`.bubble-row[data-id="${messageId}"] .bubble`);
+      if (!row) return;
+
+      row.innerHTML = `
+        <textarea class="edit-textarea">${escapeHtml(message.body)}</textarea>
+        <div class="edit-actions">
+          <button class="btn btn-secondary" data-cancel-edit>Cancel</button>
+          <button class="btn btn-primary" data-save-edit="${messageId}">Save</button>
+        </div>
+      `;
+      row.querySelector("[data-cancel-edit]").addEventListener("click", () => {
+        editingMessageId = null;
+        refreshActiveThread({ force: true });
+      });
+      row.querySelector("[data-save-edit]").addEventListener("click", async () => {
+        const newBody = row.querySelector(".edit-textarea").value.trim();
+        if (!newBody) return;
+        try {
+          await editMessage(messageId, role, userId, newBody);
+          editingMessageId = null;
+          await loadConversations();
+          await refreshActiveThread({ force: true });
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+    }
+
+    function wireComposer(threadData) {
+      const input = document.getElementById("composerInput");
+      const sendBtn = document.getElementById("composerSend");
+      const attachBtn = document.getElementById("attachBtn");
+      const attachInput = document.getElementById("attachInput");
+      const preview = document.getElementById("attachmentPreview");
+
+      attachBtn.addEventListener("click", () => attachInput.click());
+      attachInput.addEventListener("change", () => {
+        pendingFile = attachInput.files[0] || null;
+        if (pendingFile) {
+          preview.style.display = "flex";
+          preview.innerHTML = `📎 ${escapeHtml(pendingFile.name)} <button type="button" id="clearAttachment">✕</button>`;
+          document.getElementById("clearAttachment").addEventListener("click", () => {
+            pendingFile = null;
+            attachInput.value = "";
+            preview.style.display = "none";
+          });
+        }
+      });
+
+      async function doSend() {
+        const bodyText = input.value.trim();
+        if (!bodyText && !pendingFile) return;
+        if (sendBtn.disabled) return;
+        setButtonBusy(sendBtn, true, "Sending…");
+        try {
+          if (pendingFile) {
+            await sendMessageWithAttachment({
+              senderRole: role,
+              senderId: userId,
+              recipientId: threadData.other_party_id,
+              body: bodyText,
+              file: pendingFile,
+            });
+            pendingFile = null;
+            attachInput.value = "";
+            preview.style.display = "none";
+          } else {
+            await sendMessage({
+              senderRole: role,
+              senderId: userId,
+              recipientId: threadData.other_party_id,
+              body: bodyText,
+            });
+          }
+          input.value = "";
+          await loadConversations();
+          await refreshActiveThread({ force: true });
+        } catch (err) {
+          alert(err.message);
+        } finally {
+          setButtonBusy(sendBtn, false);
+        }
+      }
+
+      sendBtn.addEventListener("click", doSend);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          doSend();
+        }
+      });
+    }
+
+    async function openConversation(conversationId) {
+      activeConversationId = conversationId;
+      editingMessageId = null;
+      renderConversationList();
+      try {
+        const threadData = await fetchConversationMessages(conversationId, role, userId);
+        renderChat(threadData);
+      } catch (err) {
+        document.getElementById("chatPane").innerHTML =
+          `<div class="empty-chat-state">${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    /** Live-update the open thread. Called on a timer (THREAD_POLL_MS) and
+     * right after actions that change the thread (send/edit/delete). Skips
+     * redrawing while the user is mid-edit, and only touches the messages
+     * list (never the composer), so an in-progress draft is never wiped. */
+    async function refreshActiveThread({ force = false } = {}) {
+      if (!activeConversationId) return;
+      if (editingMessageId && !force) return;
+      try {
+        const threadData = await fetchConversationMessages(activeConversationId, role, userId);
+        const changed = !activeThread || threadSignature(threadData) !== threadSignature(activeThread);
+        const blockStateChanged = !activeThread
+          || threadData.is_blocked !== activeThread.is_blocked
+          || threadData.blocked_by_me !== activeThread.blocked_by_me;
+        activeThread = threadData;
+        // Block state changes affect the header and composer, not just the
+        // message list. Re-render the full chat immediately after block /
+        // unblock (or when a poll notices the other participant blocked us).
+        if ((force || blockStateChanged) && !editingMessageId) {
+          renderChat(threadData);
+        } else if (changed && !editingMessageId) {
+          renderMessagesInto(threadData, { preserveScroll: true });
+        }
+      } catch (_) {
+        // Conversation may have been deleted from under us, or a transient
+        // network hiccup — polling just tries again next tick.
+      }
+    }
+
+    // ---------- New message modal ----------
+
+    function populateRecipientOptions() {
+      const select = document.getElementById("recipientSelect");
+      const options = otherRole === "employer" ? TEST_EMPLOYERS : TEST_SEEKERS;
+      select.innerHTML = options.map((o) => `<option value="${o.id}">${escapeHtml(o.label)}</option>`).join("");
+    }
+
+    function openNewMessageModal(prefillOtherId) {
+      populateRecipientOptions();
+      if (prefillOtherId) document.getElementById("recipientSelect").value = String(prefillOtherId);
+      document.getElementById("newMessageBody").value = "";
+      document.getElementById("newMessageError").style.display = "none";
+      document.getElementById("newMessageModal").style.display = "flex";
+    }
+
+    function closeNewMessageModal() {
+      document.getElementById("newMessageModal").style.display = "none";
+    }
+
+    document.getElementById("newMessageBtn").addEventListener("click", () => openNewMessageModal());
+    document.getElementById("cancelNewMessage").addEventListener("click", closeNewMessageModal);
+
+    document.getElementById("sendNewMessage").addEventListener("click", async () => {
+      const recipientId = Number(document.getElementById("recipientSelect").value);
+      const body = document.getElementById("newMessageBody").value.trim();
+      const errEl = document.getElementById("newMessageError");
+      if (!body) {
+        errEl.textContent = "Message cannot be empty.";
+        errEl.style.display = "block";
+        return;
+      }
+      try {
+        const sent = await sendMessage({
+          senderRole: role,
+          senderId: userId,
+          recipientId,
+          body,
+          jobId: deepLinkJobId,
+        });
+        closeNewMessageModal();
+        await loadConversations();
+        await openConversation(sent.conversation_id);
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = "block";
+      }
+    });
+
+    // ---------- Interview invitation modal (employer only) ----------
+
+    let interviewRecipientId = null;
+    let reschedulingMessageId = null; // null = creating a new invite, else editing this one
+
+    function toLocalDateTimeInputValue(iso) {
+      // <input type="datetime-local"> needs "YYYY-MM-DDTHH:mm" in LOCAL time,
+      // not the UTC ISO string the backend returns.
+      const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function openInterviewModal(recipientSeekerId, editing = null) {
+      interviewRecipientId = recipientSeekerId;
+      reschedulingMessageId = editing ? editing.messageId : null;
+
+      const heading = document.querySelector("#interviewModal h3");
+      const submitBtn = document.getElementById("sendInterview");
+      if (editing) {
+        heading.textContent = "Reschedule Interview";
+        submitBtn.textContent = "Save Changes";
+        document.getElementById("interviewDateTime").value = toLocalDateTimeInputValue(editing.invite.scheduled_at);
+        document.getElementById("interviewDuration").value = editing.invite.duration_minutes;
+        document.getElementById("interviewMode").value = editing.invite.mode;
+        document.getElementById("interviewLocation").value = editing.invite.location_or_link || "";
+        document.getElementById("interviewNotes").value = editing.invite.notes || "";
+      } else {
+        heading.textContent = "Schedule Interview";
+        submitBtn.textContent = "Send Invitation";
+        document.getElementById("interviewDateTime").value = "";
+        document.getElementById("interviewDuration").value = 30;
+        document.getElementById("interviewMode").value = "video";
+        document.getElementById("interviewLocation").value = "";
+        document.getElementById("interviewNotes").value = "";
+      }
+      document.getElementById("interviewError").style.display = "none";
+      document.getElementById("interviewModal").style.display = "flex";
+    }
+
+    function closeInterviewModal() {
+      document.getElementById("interviewModal").style.display = "none";
+    }
+
+    document.getElementById("cancelInterview").addEventListener("click", closeInterviewModal);
+
+    document.getElementById("sendInterview").addEventListener("click", async () => {
+      const errEl = document.getElementById("interviewError");
+      const dateTimeRaw = document.getElementById("interviewDateTime").value;
+      const duration = parseInt(document.getElementById("interviewDuration").value, 10);
+      const mode = document.getElementById("interviewMode").value;
+      const location_or_link = document.getElementById("interviewLocation").value.trim();
+      const notes = document.getElementById("interviewNotes").value.trim();
+
+      if (!dateTimeRaw) {
+        errEl.textContent = "Pick a date and time.";
+        errEl.style.display = "block";
+        return;
+      }
+      if (!Number.isInteger(duration) || duration < 15) {
+        errEl.textContent = "Duration must be at least 15 minutes.";
+        errEl.style.display = "block";
+        return;
+      }
+
+      const details = {
+        scheduled_at: new Date(dateTimeRaw).toISOString(),
+        duration_minutes: duration,
+        mode,
+        location_or_link,
+        notes,
+      };
+
+      try {
+        if (reschedulingMessageId) {
+          await rescheduleInterview(reschedulingMessageId, userId, details);
+          closeInterviewModal();
+          await loadConversations();
+          await refreshActiveThread({ force: true });
+        } else {
+          const sent = await sendInterviewInvite(userId, interviewRecipientId, deepLinkJobId, details);
+          closeInterviewModal();
+          await loadConversations();
+          await openConversation(sent.conversation_id);
+        }
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = "block";
+      }
+    });
+
+    // ---------- Init + polling ----------
+
+    async function init() {
+      renderTopbar();
+      renderDevBar();
+      await loadConversations();
+
+      if (deepLinkOtherId) {
+        try {
+          const { conversation_id } = await findOrCreateConversation(role, userId, deepLinkOtherId);
+          await loadConversations();
+          await openConversation(conversation_id);
+        } catch (err) {
+          openNewMessageModal(deepLinkOtherId);
+        }
+      } else if (conversations.length > 0) {
+        openConversation(conversations[0].id);
+      }
+
+      setInterval(refreshActiveThread, THREAD_POLL_MS);
+      setInterval(loadConversations, LIST_POLL_MS);
+    }
+
+    init();
+  </script>     
+</body>
+</html>

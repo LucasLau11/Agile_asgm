@@ -195,14 +195,15 @@ async function apiFetch(path, options = {}) {
   return res.json();
 }
 
-function fetchJobs({ keyword = "", location = "", state = "", jobType = "", salaryMin = "", salaryMax = "" } = {}) {
+function fetchJobs({ keyword = "", location = "", state = "", jobType = "", salaryMin = "", seekerId = "", sortBy = "" } = {}) {
   const params = new URLSearchParams();
   if (keyword) params.set("keyword", keyword);
   if (location) params.set("location", location);
   if (state) params.set("state", state);
   if (jobType) params.set("job_type", jobType);
   if (salaryMin) params.set("salary_min", salaryMin);
-  if (salaryMax) params.set("salary_max", salaryMax);
+  if (seekerId) params.set("seeker_id", seekerId);
+  if (sortBy) params.set("sort_by", sortBy);
   const query = params.toString();
   return apiFetch(`/api/jobs${query ? `?${query}` : ""}`);
 }
@@ -211,8 +212,9 @@ function fetchRecommendedJobs(seekerId) {
   return apiFetch(`/api/jobs/recommended?seeker_id=${seekerId}`);
 }
 
-function fetchJob(jobId) {
-  return apiFetch(`/api/jobs/${jobId}`);
+function fetchJob(jobId, seekerId) {
+  const query = seekerId ? `?seeker_id=${seekerId}` : "";
+  return apiFetch(`/api/jobs/${jobId}${query}`);
 }
 
 function fetchSeekerProfile(seekerId) {
@@ -325,11 +327,33 @@ function deleteEmployerJob(employerId, jobId) {
   });
 }
 
-function trustSealHtml(score) {
+// ---------------------------------------------------------------------------
+// Notifications (notifications.html, employer_notifications.html)
+// ---------------------------------------------------------------------------
+
+function deleteNotification(notificationId, role, userId) {
+  return apiFetch(`/api/notifications/${notificationId}?role=${role}&user_id=${userId}`, {
+    method: "DELETE",
+  });
+}
+
+function clearAllNotifications(role, userId) {
+  return apiFetch(`/api/notifications?role=${role}&user_id=${userId}`, {
+    method: "DELETE",
+  });
+}
+
+function trustSealHtml(score, reasons) {
   const safeScore = score == null ? "—" : score;
   const lowClass = score != null && score < 50 ? "low" : "";
+  const tooltip =
+    reasons && reasons.length > 0
+      ? `Credibility score. Lowered by: ${reasons.join("; ")}`
+      : score != null
+      ? "Credibility score. No issues found with this posting."
+      : "Credibility score";
   return `
-    <div class="trust-seal ${lowClass}" title="Credibility score">
+    <div class="trust-seal ${lowClass}" title="${escapeHtml(tooltip)}">
       <div class="score">${safeScore}</div>
       <div class="label">Trust</div>
     </div>
@@ -340,4 +364,230 @@ function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str ?? "";
   return div.innerHTML;
+}
+
+/** Toggles a submit button's disabled state and swaps its label to a
+ * "busy" message while an async action is in flight, restoring the
+ * original label afterwards. Call setButtonBusy(btn, true, "Saving…")
+ * before the request and setButtonBusy(btn, false) in a finally block. */
+function setButtonBusy(button, busy, busyLabel) {
+  if (busy) {
+    button.dataset.originalLabel = button.textContent;
+    button.textContent = busyLabel || "Working…";
+    button.disabled = true;
+  } else {
+    if (button.dataset.originalLabel) button.textContent = button.dataset.originalLabel;
+    button.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Messaging (messages.html, plus "Message Employer" / "Message Seeker"
+// buttons on job_detail.html / applicant_detail.html). US-40 to US-43.
+// ---------------------------------------------------------------------------
+
+function fetchConversations(role, userId) {
+  return apiFetch(`/api/conversations?role=${role}&user_id=${userId}`);
+}
+
+function fetchConversationMessages(conversationId, role, userId) {
+  return apiFetch(`/api/conversations/${conversationId}/messages?role=${role}&user_id=${userId}`);
+}
+
+function sendMessage({ senderRole, senderId, recipientId, body, jobId = null }) {
+  const payload = { sender_role: senderRole, sender_id: senderId, recipient_id: recipientId, body };
+  if (jobId != null) payload.job_id = jobId;
+  return apiFetch(`/api/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Sends a message with an image/file attachment (US messaging enhancement).
+ * Caption is optional — a bare attachment is a valid message. */
+async function sendMessageWithAttachment({ senderRole, senderId, recipientId, body = "", jobId = null, file }) {
+  const form = new FormData();
+  form.append("sender_role", senderRole);
+  form.append("sender_id", senderId);
+  form.append("recipient_id", recipientId);
+  form.append("body", body);
+  if (jobId != null) form.append("job_id", jobId);
+  form.append("file", file);
+
+  const res = await fetch(`/api/messages/attachment`, { method: "POST", body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
+/** Edit a message's text — sender-only, time-limited window (enforced server-side). */
+function editMessage(messageId, role, userId, body) {
+  return apiFetch(`/api/messages/${messageId}?role=${role}&user_id=${userId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+}
+
+/** Delete a message. scope="me" hides it just for the requester;
+ * scope="everyone" is sender-only and replaces it with a placeholder for both. */
+function deleteMessage(messageId, role, userId, scope) {
+  return apiFetch(`/api/messages/${messageId}?role=${role}&user_id=${userId}&scope=${scope}`, {
+    method: "DELETE",
+  });
+}
+
+/** Used by the contextual "Message Employer" / "Message Seeker" buttons. */
+function findOrCreateConversation(role, userId, otherId) {
+  const params = new URLSearchParams({ role, user_id: userId, other_id: otherId });
+  return apiFetch(`/api/conversations/find-or-create?${params.toString()}`, { method: "POST" });
+}
+
+/** Hides a whole thread from the requester's own inbox (like WhatsApp's
+ * "Delete chat") — the other party's copy is unaffected, and the thread
+ * reappears for both if there's new activity afterwards. */
+function deleteConversation(conversationId, role, userId) {
+  return apiFetch(`/api/conversations/${conversationId}?role=${role}&user_id=${userId}`, {
+    method: "DELETE",
+  });
+}
+
+// ---- US-46/47: interview invitations ----
+
+/** US-46: employer sends a structured interview invite (date/time,
+ * duration, mode, location/link, notes) instead of a plain text message.
+ * details = { scheduled_at (ISO string), duration_minutes, mode, location_or_link, notes } */
+function sendInterviewInvite(employerId, seekerId, jobId, details) {
+  const params = new URLSearchParams({ employer_id: employerId, seeker_id: seekerId });
+  if (jobId != null) params.set("job_id", jobId);
+  return apiFetch(`/api/messages/interview-invite?${params.toString()}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(details),
+  });
+}
+
+/** US-47: seeker accepts or declines. response must be "accepted" or "declined". */
+function respondToInterview(messageId, userId, response) {
+  return apiFetch(`/api/messages/${messageId}/interview-response?user_id=${userId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ response }),
+  });
+}
+
+/** US-XX: employer reschedules an interview they sent — same shape as
+ * sendInterviewInvite's details. Resets status to "pending" server-side. */
+function rescheduleInterview(messageId, employerId, details) {
+  return apiFetch(`/api/messages/${messageId}/interview-reschedule?employer_id=${employerId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(details),
+  });
+}
+
+/** US-XX: employer cancels an interview they sent. */
+function cancelInterview(messageId, employerId) {
+  return apiFetch(`/api/messages/${messageId}/interview-cancel?employer_id=${employerId}`, {
+    method: "POST",
+  });
+}
+
+/** Builds an authenticated URL for an encrypted attachment — the backend
+ * decrypts on the fly and checks conversation membership, so role/user_id
+ * have to travel with every request for it (see routes/messages.py). */
+function attachmentUrlFor(baseUrl, role, userId) {
+  if (!baseUrl) return "";
+  return `${baseUrl}?role=${role}&user_id=${userId}`;
+}
+
+/** Rough "x minutes/hours ago" formatting — used in the conversation list preview. */
+function timeAgo(isoString) {
+  if (!isoString) return "";
+  const then = new Date(isoString.endsWith("Z") ? isoString : isoString + "Z");
+  const seconds = Math.floor((Date.now() - then.getTime()) / 1000);
+  if (seconds < 60) return "Just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  const days = Math.floor(seconds / 86400);
+  return days === 1 ? "Yesterday" : `${days}d ago`;
+}
+
+/** Absolute sent-date formatting for chat bubbles (e.g. "9:14 AM" for
+ * today, "21 Jul, 9:14 AM" otherwise) — chat apps show clock time inside
+ * a thread and reserve relative "x ago" phrasing for the inbox list. */
+function formatMessageDateTime(isoString) {
+  if (!isoString) return "";
+  const then = new Date(isoString.endsWith("Z") ? isoString : isoString + "Z");
+  const now = new Date();
+  const timePart = then.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const isToday = then.toDateString() === now.toDateString();
+  if (isToday) return timePart;
+  const datePart = then.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return `${datePart}, ${timePart}`;
+}
+
+// ---------------------------------------------------------------------------
+// Unread-messages nav badge. api.js is loaded on every page, so this runs
+// everywhere automatically — no per-page wiring needed. It finds whichever
+// "Messages" nav link is on the current page (seeker or employer topbar)
+// and keeps an unread-count pill on it current via polling.
+// ---------------------------------------------------------------------------
+
+const MESSAGES_BADGE_POLL_MS = 20000;
+
+async function _refreshMessagesNavBadge() {
+  const link = document.querySelector('a[href*="messages.html"]');
+  if (!link) return; // this page has no Messages nav link (yet, or at all)
+
+  const isEmployer = link.getAttribute("href").includes("role=employer");
+  const role = isEmployer ? "employer" : "seeker";
+  const userId = isEmployer ? getCurrentEmployerId() : getCurrentSeekerId();
+
+  try {
+    const conversations = await fetchConversations(role, userId);
+    const total = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+
+    let badge = link.querySelector(".nav-badge");
+    if (total > 0) {
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "nav-badge";
+        link.appendChild(badge);
+      }
+      badge.textContent = total > 99 ? "99+" : String(total);
+    } else if (badge) {
+      badge.remove();
+    }
+  } catch (_) {
+    // A badge failing to load shouldn't break the rest of the page.
+  }
+}
+
+function _startMessagesNavBadgePolling() {
+  // Some pages (messages.html itself, employer pages) build their topbar
+  // via JS rather than static HTML — give that a moment to run first.
+  setTimeout(_refreshMessagesNavBadge, 300);
+  setInterval(_refreshMessagesNavBadge, MESSAGES_BADGE_POLL_MS);
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("DOMContentLoaded", _startMessagesNavBadgePolling);
+}
+
+/** Blocks the other participant. Blocking is enforced by the API for both
+ * directions, so it also applies to messages sent from contextual pages. */
+function blockConversation(conversationId, role, userId) {
+  return apiFetch(`/api/conversations/${conversationId}/block?role=${role}&user_id=${userId}`, {
+    method: "POST",
+  });
+}
+
+function unblockConversation(conversationId, role, userId) {
+  return apiFetch(`/api/conversations/${conversationId}/block?role=${role}&user_id=${userId}`, {
+    method: "DELETE",
+  });
 }

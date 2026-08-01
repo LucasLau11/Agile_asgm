@@ -103,11 +103,18 @@ class JobOut(BaseModel):
     positions_filled: int = 0
     positions_remaining: int = 1
     credibility_score: Optional[int] = None
+    credibility_reasons: List[str] = []
     match_percentage: Optional[int] = None
+    missing_skills: List[str] = []
 
     @classmethod
     def from_job(
-        cls, job, credibility_score: Optional[int] = None, match_percentage: Optional[int] = None
+        cls,
+        job,
+        credibility_score: Optional[int] = None,
+        credibility_reasons: Optional[List[str]] = None,
+        match_percentage: Optional[int] = None,
+        missing_skills: Optional[List[str]] = None,
     ) -> "JobOut":
         return cls(
             id=job.id,
@@ -126,9 +133,10 @@ class JobOut(BaseModel):
             positions_filled=job.positions_filled,
             positions_remaining=job.positions_remaining(),
             credibility_score=credibility_score,
+            credibility_reasons=credibility_reasons or [],
             match_percentage=match_percentage,
+            missing_skills=missing_skills or [],
         )
-
 
 # ---------- Employer job management (Teammate A) ----------
 #
@@ -442,6 +450,147 @@ class EducationSuggestion(BaseModel):
     field_of_study: str = ""
     start_date: str = ""
     end_date: str = ""
+
+
+# ---------- Messaging (US-40 / US-41 / US-42 / US-43) ----------
+
+
+def _validate_message_body(value: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        raise ValueError("Message cannot be empty.")
+    if len(value) > 4000:
+        raise ValueError("Message is too long (max 4000 characters).")
+    return value
+
+
+class MessageCreate(BaseModel):
+    """Body for POST /api/messages.
+
+    sender_role/sender_id identify who's sending (matches the "acting as"
+    dev-user pattern used elsewhere — real auth arrives Sprint 3).
+    recipient_id is the id of the other party, whose role is the opposite
+    of sender_role. job_id is optional: a message can reference a specific
+    job posting ("regarding this job") or be a general enquiry.
+    """
+
+    sender_role: str = Field(..., pattern="^(seeker|employer)$")
+    sender_id: int
+    recipient_id: int
+    body: str = Field(..., min_length=1, max_length=4000)
+    job_id: Optional[int] = None
+
+    @field_validator("body")
+    @classmethod
+    def _body_not_blank(cls, value: str) -> str:
+        return _validate_message_body(value)
+
+
+class MessageEdit(BaseModel):
+    """Body for PUT /api/messages/{id} — editing is time-limited (see
+    EDIT_WINDOW_MINUTES in routes/messages.py) and sender-only."""
+
+    body: str = Field(..., min_length=1, max_length=4000)
+
+    @field_validator("body")
+    @classmethod
+    def _body_not_blank(cls, value: str) -> str:
+        return _validate_message_body(value)
+
+
+class InterviewInviteCreate(BaseModel):
+    """Body for POST /api/messages/interview-invite (US-46, employer-only)."""
+
+    scheduled_at: datetime
+    duration_minutes: int = Field(default=30, ge=15, le=480)
+    mode: str = Field(..., pattern="^(video|phone|in_person)$")
+    location_or_link: Optional[str] = Field(default="", max_length=500)
+    notes: Optional[str] = Field(default="", max_length=2000)
+
+
+class InterviewResponseIn(BaseModel):
+    """Body for POST /api/messages/{id}/interview-response (US-47, seeker-only)."""
+
+    response: str = Field(..., pattern="^(accepted|declined)$")
+
+
+class InterviewInviteOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    scheduled_at: datetime
+    duration_minutes: int
+    mode: str
+    location_or_link: Optional[str] = ""
+    notes: Optional[str] = ""
+    status: str
+    responded_at: Optional[datetime] = None
+
+
+class MessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    conversation_id: int
+    sender_role: str
+    sender_id: int
+    body: str
+    job_id: Optional[int] = None
+    job_title: Optional[str] = None
+    is_read: bool
+    created_at: datetime
+    is_edited: bool = False
+    is_deleted: bool = False
+    attachment_url: Optional[str] = None
+    attachment_filename: Optional[str] = None
+    attachment_type: Optional[str] = None
+    message_type: str = "text"
+    interview: Optional[InterviewInviteOut] = None
+
+    @classmethod
+    def from_message(cls, message, body: str) -> "MessageOut":
+        """`body` is passed explicitly (already decrypted, and possibly
+        replaced with a "This message was deleted" placeholder) rather than
+        read off message.body directly, so this schema stays decoupled
+        from the encryption layer — see routes/messages.py's _message_out().
+        """
+        return cls(
+            id=message.id,
+            conversation_id=message.conversation_id,
+            sender_role=message.sender_role,
+            sender_id=message.sender_id,
+            body=body,
+            job_id=message.job_id,
+            job_title=message.job.title if message.job else None,
+            is_read=bool(message.is_read),
+            created_at=message.created_at,
+            is_edited=message.edited_at is not None,
+            is_deleted=bool(message.is_deleted),
+            attachment_url=(
+                f"/api/messages/{message.id}/attachment" if message.attachment_url else None
+            ),
+            attachment_filename=message.attachment_filename,
+            attachment_type=message.attachment_type,
+            message_type=message.message_type,
+            interview=(
+                InterviewInviteOut.model_validate(message.interview_invite)
+                if message.interview_invite else None
+            ),
+        )
+
+
+class ConversationOut(BaseModel):
+    """One row in the inbox list — the other party plus a preview of the
+    most recent message, like a WhatsApp chat list entry."""
+
+    id: int
+    other_party_id: int
+    other_party_name: str
+    last_message_preview: str
+    last_message_at: Optional[datetime] = None
+    unread_count: int = 0
+    is_blocked: bool = False
+    blocked_by_me: bool = False
 
 
 class ParsedResumeOut(BaseModel):

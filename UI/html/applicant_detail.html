@@ -15,6 +15,8 @@
     <nav>
       <a href="/UI/html/job_management.html">My Postings</a>
       <a href="/UI/html/employer_applications.html">Applications</a>
+      <a href="/UI/html/messages.html?role=employer">Messages</a>
+      <a href="/UI/html/employer_notifications.html">Notifications</a>
     </nav>
     <a href="/UI/html/browse_job.html" class="role-switch">Job Seeker</a>
   </div>
@@ -27,15 +29,15 @@
     <p class="subtitle">Review candidate information and update recruitment progress.</p>
 
     <div id="applicantContainer">
-      <p class="subtitle">Loading applicant...</p>
+      <p class="loading-state">Loading applicant...</p>
     </div>
   </main>
 
   <script src="../js/api.js"></script>
   <script>
-    const employerId = 1;
-    if (typeof renderDevUserBar === "function") {
-      renderDevUserBar("devUserBar");
+    const employerId = (typeof getCurrentEmployerId === "function") ? getCurrentEmployerId() : 1;
+    if (typeof renderDevEmployerBar === "function") {
+      renderDevEmployerBar("devUserBar");
     } else {
       document.getElementById("devUserBar").innerHTML = `
         Acting as: Employer #${employerId} — ABC Technologies
@@ -87,10 +89,10 @@
           <p>Email: ${escapeHtml(applicant.email)}</p>
           <p>Skills: ${skillsHtml}</p>
 
+          <button id="messageSeekerBtn" class="btn btn-secondary">Message Seeker</button>
+
           <h3 style="margin-top:20px;">Cover Letter</h3>
-          <p style="font-style:italic; background:#f9f9f9; padding:12px; border-left:3px solid #ccc;">
-            "${escapeHtml(applicant.cover_letter)}"
-          </p>
+          <p class="quote-box">"${escapeHtml(applicant.cover_letter)}"</p>
 
           <h3 style="margin-top:25px;">Recruitment Progress</h3>
           <div class="stage-timeline">${timelineHtml(applicant.status)}</div>
@@ -129,6 +131,13 @@
         container.innerHTML = applicantHtml(applicant);
 
         document.getElementById("saveBtn").addEventListener("click", () => saveStage(applicant.id));
+
+        // US-41: jump straight into (or start) a conversation with this
+        // applicant's seeker.
+        document.getElementById("messageSeekerBtn").addEventListener("click", () => {
+          window.location.href =
+            `/UI/html/messages.html?role=employer&other=${applicant.seeker_id}`;
+        });
       } catch (err) {
         console.error(err);
         container.innerHTML = `
@@ -156,6 +165,12 @@
         if (!response.ok) throw new Error("Failed to save changes");
 
         statusEl.textContent = "Recruitment stage updated successfully!";
+        // Re-fetch and re-render so the stage timeline and dropdown reflect
+        // the saved change immediately — previously this only updated the
+        // status text, leaving the timeline/select showing the old stage
+        // until the page was manually reloaded.
+        await loadApplicant();
+        document.getElementById("saveStatus").textContent = "Recruitment stage updated successfully!";
       } catch (err) {
         console.error(err);
         statusEl.textContent = `Couldn't save changes: ${err.message}`;

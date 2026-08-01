@@ -285,17 +285,33 @@ async def api_update_applicant_stage(
 
 
 @router.get("/api/notifications")
-async def api_get_notifications(seeker_id: int = Query(1), db: Session = Depends(get_db)):
-    """Consumed by notifications.html."""
+async def api_get_notifications(
+    seeker_id: int = Query(1),
+    role: Optional[str] = Query(None, pattern="^(seeker|employer)$"),
+    user_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Consumed by notifications.html, and also the generic role/user_id
+    shape used elsewhere (mirrors the delete endpoints below). When role
+    and user_id are both supplied, they take precedence — this lets the
+    same endpoint serve an employer's notifications too. Falls back to the
+    original seeker_id-only behavior for backward compatibility."""
+    if role is not None and user_id is not None:
+        column = Notification.seeker_id if role == "seeker" else Notification.employer_id
+        notif_filter = column == user_id
+    else:
+        notif_filter = Notification.seeker_id == seeker_id
+
     records = (
         db.query(Notification)
-        .filter(Notification.seeker_id == seeker_id)
+        .filter(notif_filter)
         .order_by(Notification.created_at.desc())
         .all()
     )
 
     results = [
         {
+            "id": n.id,
             "title": n.title,
             "message": n.message,
             "time_ago": _humanize(n.created_at),
@@ -304,3 +320,68 @@ async def api_get_notifications(seeker_id: int = Query(1), db: Session = Depends
     ]
 
     return JSONResponse(content=results)
+
+
+@router.get("/api/employer/notifications")
+async def api_get_employer_notifications(employer_id: int = Query(1), db: Session = Depends(get_db)):
+    """Employer-side equivalent of api_get_notifications, consumed by
+    employer_notifications.html. This didn't exist before — only the
+    seeker-side GET was wired up, even though Notification.employer_id
+    has been populated (e.g. by messages.py's _notify_recipient) since
+    the messaging module landed."""
+    records = (
+        db.query(Notification)
+        .filter(Notification.employer_id == employer_id)
+        .order_by(Notification.created_at.desc())
+        .all()
+    )
+
+    results = [
+        {
+            "id": n.id,
+            "title": n.title,
+            "message": n.message,
+            "time_ago": _humanize(n.created_at),
+        }
+        for n in records
+    ]
+
+    return JSONResponse(content=results)
+
+
+@router.delete("/api/notifications/{notification_id}")
+async def api_delete_notification(
+    notification_id: int,
+    role: str = Query(..., pattern="^(seeker|employer)$"),
+    user_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Remove a single notification. Works for both seeker and employer
+    notifications (same Notification table, just a different owning
+    column) — checks ownership so a seeker/employer can't delete someone
+    else's notification by guessing an id."""
+    notif = db.query(Notification).filter(Notification.id == notification_id).first()
+    if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found.")
+
+    owner_id = notif.seeker_id if role == "seeker" else notif.employer_id
+    if owner_id != user_id:
+        raise HTTPException(status_code=403, detail="Not your notification.")
+
+    db.delete(notif)
+    db.commit()
+    return JSONResponse(content={"success": True})
+
+
+@router.delete("/api/notifications")
+async def api_clear_notifications(
+    role: str = Query(..., pattern="^(seeker|employer)$"),
+    user_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Clear-all convenience — same ownership scoping as the single-delete
+    endpoint above, just applied to every matching row at once."""
+    column = Notification.seeker_id if role == "seeker" else Notification.employer_id
+    deleted = db.query(Notification).filter(column == user_id).delete()
+    db.commit()
+    return JSONResponse(content={"success": True, "deleted": deleted})

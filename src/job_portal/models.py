@@ -121,7 +121,14 @@ class Notification(Base):
     __tablename__ = "notifications"
  
     id = Column(Integer, primary_key=True, index=True)
-    seeker_id = Column(Integer, nullable=False, index=True, default=1)
+    # A notification belongs to exactly one recipient: a seeker OR an
+    # employer, never both. seeker_id stays nullable=True (was
+    # nullable=False/default=1) so employer-targeted rows can leave it
+    # NULL — every existing call site already sets seeker_id explicitly,
+    # so this is a widening change, not a behavior change for Sprint 1
+    # notifications.
+    seeker_id = Column(Integer, nullable=True, index=True)
+    employer_id = Column(Integer, nullable=True, index=True)
     application_id = Column(Integer, ForeignKey("applications.id"), nullable=True, index=True)
     title = Column(String(200), nullable=False, default="")
     message = Column(Text, nullable=False, default="")
@@ -129,3 +136,103 @@ class Notification(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
  
     application = relationship("Application")
+
+
+class Conversation(Base):
+    """One persistent thread per (seeker, employer) pair — WhatsApp/Telegram
+    style: there's a single ongoing conversation with a contact, not a new
+    thread per topic. A specific job can still be tagged onto individual
+    messages within the thread (see Message.job_id) without splitting the
+    conversation itself.
+    """
+
+    __tablename__ = "conversations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    seeker_id = Column(Integer, nullable=False, index=True)
+    employer_id = Column(Integer, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_message_at = Column(DateTime, default=datetime.utcnow)
+
+    # "Delete conversation" (US messaging enhancement): hides the thread
+    # from just that participant's inbox — the other party is unaffected,
+    # and nothing is actually deleted. Mirrors Message.deleted_for_* below.
+    # A new incoming/outgoing message un-hides it for both sides again
+    # (see routes/messages.py) since an active conversation reappearing on
+    # new activity matches how WhatsApp/Telegram "delete chat" behaves.
+    hidden_for_seeker = Column(Integer, nullable=False, default=0)
+    hidden_for_employer = Column(Integer, nullable=False, default=0)
+
+    # Blocking is deliberately stored on the one persistent conversation for
+    # this seeker/employer pair. Either participant may block the other; while
+    # either flag is set, no new communication can be sent in either direction.
+    blocked_by_seeker = Column(Integer, nullable=False, default=0)
+    blocked_by_employer = Column(Integer, nullable=False, default=0)
+
+    messages = relationship(
+        "Message", back_populates="conversation", cascade="all, delete-orphan",
+        order_by="Message.created_at",
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False, index=True)
+    sender_role = Column(String(10), nullable=False)  # "seeker" | "employer"
+    sender_id = Column(Integer, nullable=False, index=True)
+    body = Column(Text, nullable=False, default="")  # stored encrypted — see services/message_crypto.py
+    # Optional "regarding this job" tag on an individual message — not
+    # required, since US-40/41 allow general conversation too.
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True, index=True)
+    # US-46/47/US-XX: "text" (default) or "interview_invite" — the latter
+    # carries structured scheduling details via the linked InterviewInvite row.
+    message_type = Column(String(20), nullable=False, default="text")
+    is_read = Column(Integer, nullable=False, default=0)  # 0 = unread, 1 = read
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Edit (time-limited, enforced in the route layer)
+    edited_at = Column(DateTime, nullable=True)
+
+    # Delete: "for everyone" clears content and is visible-as-deleted to
+    # both parties; "for me" only hides the row for that one participant's
+    # own view — the other party is unaffected.
+    is_deleted = Column(Integer, nullable=False, default=0)
+    deleted_for_seeker = Column(Integer, nullable=False, default=0)
+    deleted_for_employer = Column(Integer, nullable=False, default=0)
+
+    # Attachment (image or document) — encrypted on disk the same way the
+    # text body is (see services/message_crypto.py); served back out
+    # through GET /api/messages/{id}/attachment, which decrypts on the fly
+    # rather than being exposed via the static /uploads mount.
+    attachment_filename = Column(String(255), nullable=True)
+    attachment_url = Column(String(500), nullable=True)
+    attachment_type = Column(String(20), nullable=True)  # "image" | "file"
+
+    conversation = relationship("Conversation", back_populates="messages")
+    job = relationship("Job")
+    interview_invite = relationship(
+        "InterviewInvite", uselist=False, back_populates="message", cascade="all, delete-orphan"
+    )
+
+
+class InterviewInvite(Base):
+    """US-46/47/US-XX: structured interview details attached to a message
+    with message_type='interview_invite'. One-to-one with Message rather
+    than extra columns bolted onto Message itself, since only this one
+    message type needs these fields."""
+
+    __tablename__ = "interview_invites"
+
+    id = Column(Integer, primary_key=True, index=True)
+    message_id = Column(Integer, ForeignKey("messages.id"), nullable=False, unique=True, index=True)
+    scheduled_at = Column(DateTime, nullable=False)
+    duration_minutes = Column(Integer, nullable=False, default=30)
+    mode = Column(String(20), nullable=False, default="video")  # video | phone | in_person
+    location_or_link = Column(Text, nullable=True, default="")
+    notes = Column(Text, nullable=True, default="")
+    status = Column(String(20), nullable=False, default="pending")  # pending | accepted | declined | cancelled
+    responded_at = Column(DateTime, nullable=True)
+
+    message = relationship("Message", back_populates="interview_invite")
