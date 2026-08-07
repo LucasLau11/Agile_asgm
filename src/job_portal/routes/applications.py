@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from job_portal.database import get_db
 from job_portal.models import Application, Job, SeekerProfile, Notification
+from job_portal.routes.auth import get_current_account
 from job_portal.services.credibility import compute_credibility_score
 
 router = APIRouter(tags=["Applications Core Engine"])
@@ -125,8 +126,13 @@ async def handle_application(
 
 @router.get("/my-applications-fragment", response_class=HTMLResponse)
 async def get_applications_fragment(
-    request: Request, seeker_id: int = Query(1), db: Session = Depends(get_db)
+    request: Request,
+    account: dict = Depends(get_current_account),
+    db: Session = Depends(get_db),
 ):
+    if account["role"] != "seeker":
+        raise HTTPException(status_code=401, detail="Must be logged in as a job seeker.")
+    seeker_id = account["id"]
     records = db.query(Application).filter(Application.seeker_id == seeker_id).all()
 
     formatted_apps = []

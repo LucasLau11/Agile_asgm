@@ -13,6 +13,7 @@ from job_portal.routes.seeker import router as seeker_router
 from job_portal.routes.applications import router as applications_router  
 from job_portal.routes.employer import router as employer_router
 from job_portal.routes.messages import router as messages_router
+from job_portal.routes.auth import router as auth_router
 
 app = FastAPI(title="Job Portal Architecture", version="0.1.0")
 
@@ -38,6 +39,13 @@ def _ensure_columns(table: str, columns: dict) -> None:
 
 
 _ensure_columns("notifications", {"employer_id": "INTEGER"})
+_ensure_columns(
+    "seeker_profiles",
+    {
+        "hashed_password": "VARCHAR",
+        "status": "VARCHAR(20) DEFAULT 'active'",
+    },
+)
 _ensure_columns(
     "messages",
     {
@@ -65,6 +73,7 @@ app.include_router(seeker_router)
 app.include_router(applications_router)  
 app.include_router(employer_router)
 app.include_router(messages_router)
+app.include_router(auth_router)
 
 app.mount("/UI", StaticFiles(directory="UI"), name="UI")
 

@@ -51,6 +51,8 @@ class SeekerProfile(Base):
     resume_filename = Column(String(255), nullable=True)
     resume_url = Column(String(500), nullable=True)
     skills = Column(Text, nullable=True, default="")
+    hashed_password = Column(String, nullable=True)
+    status = Column(String(20), nullable=False, default="active")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -236,3 +238,48 @@ class InterviewInvite(Base):
     responded_at = Column(DateTime, nullable=True)
 
     message = relationship("Message", back_populates="interview_invite")
+
+
+class Employer(Base):
+    """A registered employer/company account (US-04). Deliberately minimal —
+    richer company-profile fields (description, industry, website...) are a
+    later sub-project; this table exists so registration has somewhere to
+    store credentials. Everywhere else in the app, `employer_id` stays a
+    bare int backed by the hardcoded EMPLOYER_DIRECTORY / TEST_EMPLOYERS —
+    reconciling those with this real table is also a later sub-project."""
+
+    __tablename__ = "employers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_name = Column(String(150), nullable=False)
+    email = Column(String(150), nullable=False, unique=True, index=True)
+    hashed_password = Column(String, nullable=False)
+    status = Column(String(20), nullable=False, default="active")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Admin(Base):
+    """The single platform administrator role. No `status` column —
+    suspending an admin isn't a requirement here."""
+
+    __tablename__ = "admins"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(150), nullable=False, unique=True, index=True)
+    hashed_password = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Session(Base):
+    """A login session. A plain database row, not a signed/stateless
+    token — `token` is a cryptographically random opaque string
+    (see services/auth.py), looked up on every authenticated request.
+    Logging out is a row delete; that's the whole revocation story."""
+
+    __tablename__ = "sessions"
+
+    token = Column(String, primary_key=True)
+    account_type = Column(String(10), nullable=False)  # "seeker" | "employer" | "admin"
+    account_id = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)

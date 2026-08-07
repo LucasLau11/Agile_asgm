@@ -366,6 +366,88 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// ---------------------------------------------------------------------------
+// Real accounts / sessions (US-01/US-02/US-04/US-06). Cookie-based —
+// `credentials: "include"` is required on every call so the session cookie
+// travels with the request. Not yet wired into the rest of the app: the
+// dev-user-bar / localStorage identity used everywhere else is untouched
+// until a later sub-project retrofits it.
+// ---------------------------------------------------------------------------
+
+async function _authFetch(path, body) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const detail = Array.isArray(data.detail)
+      ? data.detail.map((d) => d.msg || JSON.stringify(d)).join("; ")
+      : data.detail;
+    throw new Error(detail || `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
+function registerSeeker(fullName, email, password) {
+  return _authFetch("/api/auth/register/seeker", { full_name: fullName, email, password });
+}
+
+function registerEmployer(companyName, email, password) {
+  return _authFetch("/api/auth/register/employer", { company_name: companyName, email, password });
+}
+
+function loginAccount(email, password) {
+  return _authFetch("/api/auth/login", { email, password });
+}
+
+async function logoutAccount() {
+  const res = await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+  if (!res.ok) throw new Error("Logout failed");
+  return res.json();
+}
+
+async function getCurrentAccount() {
+  const res = await fetch("/api/auth/me", { credentials: "include" });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/** Call at the top of any page that requires being logged in as a specific
+ * role. Redirects to login.html and resolves null if not logged in (or
+ * logged in as the wrong role) — callers should `return` immediately when
+ * they get null back, letting the redirect happen. */
+async function requireLogin(role) {
+  const account = await getCurrentAccount();
+  if (!account || account.role !== role) {
+    window.location.href = "/UI/html/login.html";
+    return null;
+  }
+  return account;
+}
+
+/** Populates the given container (typically the existing .dev-user-bar div)
+ * with the account's display name and a working Log out button. Takes the
+ * already-fetched account object (from the page's own requireLogin() call)
+ * rather than re-fetching it — every protected page calls requireLogin()
+ * first, which already guarantees the account is valid and the right role,
+ * so re-checking here would be redundant, not protective. */
+async function renderAccountBar(containerId, account) {
+  const container = document.getElementById(containerId);
+  if (!container || !account) return;
+
+  container.innerHTML = `
+    Logged in as: <strong>${escapeHtml(account.display_name)}</strong>
+    <button type="button" class="btn-link" id="logoutBtn" style="margin-left:12px;">Log out</button>
+  `;
+  document.getElementById("logoutBtn").addEventListener("click", async () => {
+    await logoutAccount();
+    window.location.href = "/UI/html/login.html";
+  });
+}
+
 /** Toggles a submit button's disabled state and swaps its label to a
  * "busy" message while an async action is in flight, restoring the
  * original label afterwards. Call setButtonBusy(btn, true, "Saving…")

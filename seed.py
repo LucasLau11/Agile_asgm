@@ -9,14 +9,28 @@ import sys
 
 sys.path.insert(0, "src")
 
+# Importing job_portal.main runs Base.metadata.create_all() and every
+# _ensure_columns() migration as import-time side effects (the same thing
+# that happens on every server startup) — this makes the script safe to
+# run directly against a database created before this feature existed,
+# without requiring the server to have been started first.
+import job_portal.main  # noqa: F401
+
 from job_portal.database import Base, SessionLocal, engine
-from job_portal.models import Job, SeekerProfile
+from job_portal.models import Employer, Job, SeekerProfile, Session
+from job_portal.services.auth import hash_password
+
+# Fixed test password for every seeded account, printed at the end of this
+# script's output so it's discoverable without separate docs.
+TEST_PASSWORD = "password123"
 
 Base.metadata.create_all(bind=engine)
 db = SessionLocal()
 
 db.query(Job).delete()
 db.query(SeekerProfile).delete()
+db.query(Employer).delete()
+db.query(Session).delete()
 
 db.add_all(
     [
@@ -98,7 +112,8 @@ db.add_all(
     ]
 )
 
-# A sample seeker profile so /api/jobs/recommended has something to match against.
+# A sample seeker profile so /api/jobs/recommended has something to match
+# against, and so it can log in (see TEST_PASSWORD above).
 db.add(
     SeekerProfile(
         seeker_id=1,
@@ -108,8 +123,45 @@ db.add(
         bio="Backend-leaning full-stack developer with 2 years of experience "
         "building APIs and internal tools. Enjoys clean code and clear docs.",
         skills="Python,FastAPI,SQL,Docker",
+        hashed_password=hash_password(TEST_PASSWORD),
+        status="active",
     )
 )
 
+# Real Employer accounts for the employer_ids already referenced by the
+# seeded jobs above (1, 2, 3) and by EMPLOYER_DIRECTORY in
+# routes/applications.py — same names, so existing display logic that
+# still reads EMPLOYER_DIRECTORY stays consistent with these real rows.
+db.add_all(
+    [
+        Employer(
+            id=1,
+            company_name="ABC Technologies",
+            email="employer1@example.com",
+            hashed_password=hash_password(TEST_PASSWORD),
+            status="active",
+        ),
+        Employer(
+            id=2,
+            company_name="Nova Digital",
+            email="employer2@example.com",
+            hashed_password=hash_password(TEST_PASSWORD),
+            status="active",
+        ),
+        Employer(
+            id=3,
+            company_name="Everest Analytics",
+            email="employer3@example.com",
+            hashed_password=hash_password(TEST_PASSWORD),
+            status="active",
+        ),
+    ]
+)
+
 db.commit()
-print(f"Seeded {db.query(Job).count()} jobs and {db.query(SeekerProfile).count()} seeker profile(s).")
+print(
+    f"Seeded {db.query(Job).count()} jobs, {db.query(SeekerProfile).count()} seeker profile(s), "
+    f"and {db.query(Employer).count()} employer account(s)."
+)
+print(f'Test password for every seeded account: "{TEST_PASSWORD}"')
+print("Seeded logins: aisha.rahman@example.com, employer1@example.com, employer2@example.com, employer3@example.com")

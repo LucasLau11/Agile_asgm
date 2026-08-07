@@ -436,6 +436,80 @@ class ProfileInfoUpdate(BaseModel):
         return value
 
 
+class SeekerRegisterIn(BaseModel):
+    """Body for POST /api/auth/register/seeker (US-01)."""
+
+    full_name: str = Field(..., max_length=150)
+    email: str = Field(..., max_length=150)
+    password: str = Field(..., min_length=8, max_length=200)
+
+    @field_validator("full_name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        return _validate_person_name(value)
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email_format(cls, value: str) -> str:
+        value = (value or "").strip().lower()
+        if not value:
+            raise ValueError("Email is required.")
+        from email_validator import EmailNotValidError, validate_email
+
+        try:
+            validate_email(value, check_deliverability=False)
+        except EmailNotValidError:
+            raise ValueError("Must be a valid email address, e.g. name@example.com")
+        return value
+
+
+class EmployerRegisterIn(BaseModel):
+    """Body for POST /api/auth/register/employer (US-04)."""
+
+    company_name: str = Field(..., min_length=1, max_length=150)
+    email: str = Field(..., max_length=150)
+    password: str = Field(..., min_length=8, max_length=200)
+
+    @field_validator("company_name")
+    @classmethod
+    def _company_name_not_blank(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("Company name is required.")
+        return value
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email_format(cls, value: str) -> str:
+        value = (value or "").strip().lower()
+        if not value:
+            raise ValueError("Email is required.")
+        from email_validator import EmailNotValidError, validate_email
+
+        try:
+            validate_email(value, check_deliverability=False)
+        except EmailNotValidError:
+            raise ValueError("Must be a valid email address, e.g. name@example.com")
+        return value
+
+
+class LoginIn(BaseModel):
+    """Body for POST /api/auth/login."""
+
+    email: str = Field(..., max_length=150)
+    password: str = Field(..., max_length=200)
+
+
+class AuthAccountOut(BaseModel):
+    """Response shape for register/login/me — same shape regardless of
+    role, so the frontend can use one handler for all three."""
+
+    role: str  # "seeker" | "employer" | "admin"
+    id: int
+    email: str
+    display_name: str
+
+
 class ExperienceSuggestion(BaseModel):
     job_title: str = ""
     company_name: str = ""

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from job_portal.database import get_db
 from job_portal.models import Education, Job, SeekerProfile, WorkExperience
+from job_portal.routes.auth import get_current_account
 from job_portal.schemas import (
     EducationIn,
     EducationOut,
@@ -42,6 +43,16 @@ def _get_or_create_profile(db: Session, seeker_id: int) -> SeekerProfile:
         db.commit()
         db.refresh(profile)
     return profile
+
+
+def _require_seeker(account: dict) -> int:
+    """Every /api/seekers/me* endpoint below calls this first — raises 401
+    if the session isn't a seeker (not logged in at all, or logged in as
+    an employer/admin), otherwise returns the seeker's own id. Centralizes
+    the role check so it can't be forgotten on any individual endpoint."""
+    if account["role"] != "seeker":
+        raise HTTPException(status_code=401, detail="Must be logged in as a job seeker.")
+    return account["id"]
 
 
 # Browse, search, and filter job postings
@@ -172,18 +183,25 @@ def get_job(job_id: int, seeker_id: Optional[int] = None, db: Session = Depends(
         missing_skills=missing_skills,
     )
 
-@router.get("/api/seekers/{seeker_id}", response_model=SeekerProfileOut)
-def get_seeker_profile(seeker_id: int, db: Session = Depends(get_db)) -> SeekerProfileOut:
-    """Fetch a seeker's profile (creates an empty one if this is their first visit)."""
+@router.get("/api/seekers/me", response_model=SeekerProfileOut)
+def get_seeker_profile(
+    account: dict = Depends(get_current_account), db: Session = Depends(get_db)
+) -> SeekerProfileOut:
+    """Fetch the logged-in seeker's own profile (creates an empty one if
+    this is their first visit — registration doesn't pre-populate bio/phone/etc)."""
+    seeker_id = _require_seeker(account)
     profile = _get_or_create_profile(db, seeker_id)
     return SeekerProfileOut.from_profile(profile)
 
 
-@router.put("/api/seekers/{seeker_id}", response_model=SeekerProfileOut)
+@router.put("/api/seekers/me", response_model=SeekerProfileOut)
 def update_profile_info(
-    seeker_id: int, payload: ProfileInfoUpdate, db: Session = Depends(get_db)
+    payload: ProfileInfoUpdate,
+    account: dict = Depends(get_current_account),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
     """Update personal info (name, email, phone, bio) — the 'real profile' fields."""
+    seeker_id = _require_seeker(account)
     profile = _get_or_create_profile(db, seeker_id)
     profile.full_name = payload.full_name
     profile.email = payload.email
@@ -194,11 +212,14 @@ def update_profile_info(
     return SeekerProfileOut.from_profile(profile)
 
 
-@router.put("/api/seekers/{seeker_id}/skills", response_model=SeekerProfileOut)
+@router.put("/api/seekers/me/skills", response_model=SeekerProfileOut)
 def update_skills(
-    seeker_id: int, payload: SkillsUpdate, db: Session = Depends(get_db)
+    payload: SkillsUpdate,
+    account: dict = Depends(get_current_account),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
     """US-22: Replace the seeker's skill list so job matching can use it."""
+    seeker_id = _require_seeker(account)
     profile = _get_or_create_profile(db, seeker_id)
     cleaned = [s.strip() for s in payload.skills if s.strip()]
     profile.skills = ",".join(cleaned)
@@ -206,11 +227,14 @@ def update_skills(
     db.refresh(profile)
     return SeekerProfileOut.from_profile(profile)
 
-# Work experience 
-@router.post("/api/seekers/{seeker_id}/experience", response_model=SeekerProfileOut, status_code=201)
+# Work experience
+@router.post("/api/seekers/me/experience", response_model=SeekerProfileOut, status_code=201)
 def add_experience(
-    seeker_id: int, payload: ExperienceIn, db: Session = Depends(get_db)
+    payload: ExperienceIn,
+    account: dict = Depends(get_current_account),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
+    seeker_id = _require_seeker(account)
     profile = _get_or_create_profile(db, seeker_id)
     entry = WorkExperience(seeker_profile_id=profile.id, **payload.model_dump())
     db.add(entry)
@@ -219,10 +243,13 @@ def add_experience(
     return SeekerProfileOut.from_profile(profile)
 
 
-@router.delete("/api/seekers/{seeker_id}/experience/{experience_id}", response_model=SeekerProfileOut)
+@router.delete("/api/seekers/me/experience/{experience_id}", response_model=SeekerProfileOut)
 def delete_experience(
-    seeker_id: int, experience_id: int, db: Session = Depends(get_db)
+    experience_id: int,
+    account: dict = Depends(get_current_account),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
+    seeker_id = _require_seeker(account)
     profile = _get_or_create_profile(db, seeker_id)
     entry = (
         db.query(WorkExperience)
@@ -238,10 +265,13 @@ def delete_experience(
 
 
 # Education
-@router.post("/api/seekers/{seeker_id}/education", response_model=SeekerProfileOut, status_code=201)
+@router.post("/api/seekers/me/education", response_model=SeekerProfileOut, status_code=201)
 def add_education(
-    seeker_id: int, payload: EducationIn, db: Session = Depends(get_db)
+    payload: EducationIn,
+    account: dict = Depends(get_current_account),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
+    seeker_id = _require_seeker(account)
     profile = _get_or_create_profile(db, seeker_id)
     entry = Education(seeker_profile_id=profile.id, **payload.model_dump())
     db.add(entry)
@@ -250,10 +280,13 @@ def add_education(
     return SeekerProfileOut.from_profile(profile)
 
 
-@router.delete("/api/seekers/{seeker_id}/education/{education_id}", response_model=SeekerProfileOut)
+@router.delete("/api/seekers/me/education/{education_id}", response_model=SeekerProfileOut)
 def delete_education(
-    seeker_id: int, education_id: int, db: Session = Depends(get_db)
+    education_id: int,
+    account: dict = Depends(get_current_account),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
+    seeker_id = _require_seeker(account)
     profile = _get_or_create_profile(db, seeker_id)
     entry = (
         db.query(Education)
@@ -269,10 +302,13 @@ def delete_education(
 
 
 # US-03 — Upload resume
-@router.post("/api/seekers/{seeker_id}/resume", response_model=SeekerProfileOut, status_code=201)
+@router.post("/api/seekers/me/resume", response_model=SeekerProfileOut, status_code=201)
 async def upload_resume(
-    seeker_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)
+    file: UploadFile = File(...),
+    account: dict = Depends(get_current_account),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
+    seeker_id = _require_seeker(account)
 
     contents = await file.read()
 
@@ -302,14 +338,17 @@ async def upload_resume(
     return SeekerProfileOut.from_profile(profile)
 
 
-@router.get("/api/seekers/{seeker_id}/resume/parse", response_model=ParsedResumeOut)
-def parse_seeker_resume(seeker_id: int, db: Session = Depends(get_db)) -> ParsedResumeOut:
+@router.get("/api/seekers/me/resume/parse", response_model=ParsedResumeOut)
+def parse_seeker_resume(
+    account: dict = Depends(get_current_account), db: Session = Depends(get_db)
+) -> ParsedResumeOut:
     """
-    Scan the seeker's already-uploaded resume and extract suggested profile
-    data (name, email, phone, skills) using lightweight text extraction +
-    pattern matching (see services/resume_parser.py for the full approach
-    and its honest limitations).
+    Scan the logged-in seeker's already-uploaded resume and extract
+    suggested profile data (name, email, phone, skills) using lightweight
+    text extraction + pattern matching (see services/resume_parser.py for
+    the full approach and its honest limitations).
     """
+    seeker_id = _require_seeker(account)
     profile = db.query(SeekerProfile).filter(SeekerProfile.seeker_id == seeker_id).first()
     if profile is None or not profile.resume_url:
         raise HTTPException(status_code=404, detail="No resume uploaded yet for this seeker.")

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Register</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Job Portal</div>
+  </header>
+
+  <main class="page" style="max-width: 420px;">
+    <h1>Create an account</h1>
+    <p class="subtitle">Register as a job seeker or an employer.</p>
+
+    <section class="profile-section">
+      <div class="search-bar" style="margin-bottom:18px;">
+        <button type="button" class="btn btn-primary" id="seekerTabBtn" style="flex:1;">Job seeker</button>
+        <button type="button" class="btn btn-secondary" id="employerTabBtn" style="flex:1;">Employer</button>
+      </div>
+
+      <form id="seekerForm" novalidate>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="seekerNameInput">Full name</label>
+          <input type="text" id="seekerNameInput" required />
+          <div class="field-error" id="seekerNameError"></div>
+        </div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="seekerEmailInput">Email</label>
+          <input type="email" id="seekerEmailInput" required />
+          <div class="field-error" id="seekerEmailError"></div>
+        </div>
+        <div class="form-field" style="margin-bottom:16px;">
+          <label for="seekerPasswordInput">Password</label>
+          <input type="password" id="seekerPasswordInput" required />
+          <div class="field-error" id="seekerPasswordError"></div>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Create account</button>
+      </form>
+
+      <form id="employerForm" novalidate style="display:none;">
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="employerNameInput">Company name</label>
+          <input type="text" id="employerNameInput" required />
+          <div class="field-error" id="employerNameError"></div>
+        </div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="employerEmailInput">Company email</label>
+          <input type="email" id="employerEmailInput" required />
+          <div class="field-error" id="employerEmailError"></div>
+        </div>
+        <div class="form-field" style="margin-bottom:16px;">
+          <label for="employerPasswordInput">Password</label>
+          <input type="password" id="employerPasswordInput" required />
+          <div class="field-error" id="employerPasswordError"></div>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Create account</button>
+      </form>
+
+      <p class="status-msg" id="registerStatus"></p>
+      <p class="subtitle" style="margin-top:16px; margin-bottom:0;">
+        Already have an account? <a href="login.html">Log in</a>
+      </p>
+    </section>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script>
+    const seekerForm = document.getElementById("seekerForm");
+    const employerForm = document.getElementById("employerForm");
+    const seekerTabBtn = document.getElementById("seekerTabBtn");
+    const employerTabBtn = document.getElementById("employerTabBtn");
+    const statusEl = document.getElementById("registerStatus");
+
+    function showSeekerTab() {
+      seekerForm.style.display = "block";
+      employerForm.style.display = "none";
+      seekerTabBtn.className = "btn btn-primary";
+      employerTabBtn.className = "btn btn-secondary";
+      statusEl.textContent = "";
+    }
+    function showEmployerTab() {
+      seekerForm.style.display = "none";
+      employerForm.style.display = "block";
+      seekerTabBtn.className = "btn btn-secondary";
+      employerTabBtn.className = "btn btn-primary";
+      statusEl.textContent = "";
+    }
+    seekerTabBtn.addEventListener("click", showSeekerTab);
+    employerTabBtn.addEventListener("click", showEmployerTab);
+
+    seekerForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const nameEl = document.getElementById("seekerNameInput");
+      const emailEl = document.getElementById("seekerEmailInput");
+      const passwordEl = document.getElementById("seekerPasswordInput");
+      document.getElementById("seekerNameError").textContent = "";
+      document.getElementById("seekerEmailError").textContent = "";
+      document.getElementById("seekerPasswordError").textContent = "";
+      statusEl.textContent = "";
+
+      if (!nameEl.value.trim()) {
+        document.getElementById("seekerNameError").textContent = "Full name is required.";
+        return;
+      }
+      if (!emailEl.value.trim()) {
+        document.getElementById("seekerEmailError").textContent = "Email is required.";
+        return;
+      }
+      if (passwordEl.value.length < 8) {
+        document.getElementById("seekerPasswordError").textContent = "Password must be at least 8 characters.";
+        return;
+      }
+
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      setButtonBusy(submitBtn, true, "Creating account…");
+      try {
+        const account = await registerSeeker(nameEl.value.trim(), emailEl.value.trim(), passwordEl.value);
+        statusEl.textContent = `Account created — you're logged in as ${account.display_name}.`;
+        statusEl.className = "status-msg success";
+        seekerForm.reset();
+      } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.className = "status-msg error";
+      } finally {
+        setButtonBusy(submitBtn, false);
+      }
+    });
+
+    employerForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const nameEl = document.getElementById("employerNameInput");
+      const emailEl = document.getElementById("employerEmailInput");
+      const passwordEl = document.getElementById("employerPasswordInput");
+      document.getElementById("employerNameError").textContent = "";
+      document.getElementById("employerEmailError").textContent = "";
+      document.getElementById("employerPasswordError").textContent = "";
+      statusEl.textContent = "";
+
+      if (!nameEl.value.trim()) {
+        document.getElementById("employerNameError").textContent = "Company name is required.";
+        return;
+      }
+      if (!emailEl.value.trim()) {
+        document.getElementById("employerEmailError").textContent = "Email is required.";
+        return;
+      }
+      if (passwordEl.value.length < 8) {
+        document.getElementById("employerPasswordError").textContent = "Password must be at least 8 characters.";
+        return;
+      }
+
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      setButtonBusy(submitBtn, true, "Creating account…");
+      try {
+        const account = await registerEmployer(nameEl.value.trim(), emailEl.value.trim(), passwordEl.value);
+        statusEl.textContent = `Account created — you're logged in as ${account.display_name}.`;
+        statusEl.className = "status-msg success";
+        employerForm.reset();
+      } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.className = "status-msg error";
+      } finally {
+        setButtonBusy(submitBtn, false);
+      }
+    });
+
+    showSeekerTab();
+  </script>
+</body>
+</html>

@@ -2,6 +2,19 @@ import io
 
 from job_portal.models import Job
 
+
+def _login_new_seeker(client, tag, full_name="Test Seeker"):
+    """Registers and logs in a fresh seeker account for test isolation —
+    replaces the old pattern of just using an arbitrary numeric seeker_id
+    in the URL, since real endpoints now require a real session. `tag`
+    only needs to be unique per test (it becomes part of the email)."""
+    client.post("/api/auth/register/seeker", json={
+        "full_name": full_name,
+        "email": f"seeker-{tag}@example.com",
+        "password": "correcthorse",
+    })
+
+
 def test_list_jobs_returns_open_postings(client, sample_job):
     """
     US-20: View job postings
@@ -125,17 +138,16 @@ def test_get_missing_job_returns_404(client):
 
 def test_update_skills_creates_profile_on_first_use(client):
     """
-    US-22: Maintain skill profile (first-time use, no login yet)
+    US-22: Maintain skill profile (first-time use)
 
-    Given a seeker has never touched their profile before
-    When I PUT /api/seekers/{id}/skills with a skill list
-    Then a profile is created on the fly and the skills are saved
+    Given a newly-registered seeker who has never touched their profile
+    When I PUT /api/seekers/me/skills with a skill list
+    Then the profile (created at registration) has the skills saved
     """
-    r = client.put("/api/seekers/42/skills", json={"skills": ["Python", "SQL"]})
+    _login_new_seeker(client, "42")
+    r = client.put("/api/seekers/me/skills", json={"skills": ["Python", "SQL"]})
     assert r.status_code == 200
-    body = r.json()
-    assert body["seeker_id"] == 42
-    assert set(body["skills"]) == {"Python", "SQL"}
+    assert set(r.json()["skills"]) == {"Python", "SQL"}
 
 
 def test_update_skills_replaces_existing_list(client):
@@ -146,8 +158,9 @@ def test_update_skills_replaces_existing_list(client):
     When I PUT a new skill list
     Then the old list is fully replaced, not merged
     """
-    client.put("/api/seekers/7/skills", json={"skills": ["Python"]})
-    r = client.put("/api/seekers/7/skills", json={"skills": ["React", "CSS"]})
+    _login_new_seeker(client, "7")
+    client.put("/api/seekers/me/skills", json={"skills": ["Python"]})
+    r = client.put("/api/seekers/me/skills", json={"skills": ["React", "CSS"]})
     assert r.status_code == 200
     assert set(r.json()["skills"]) == {"React", "CSS"}
 
@@ -157,10 +170,11 @@ def test_update_skills_strips_blank_entries(client):
     US-22: Maintain skill profile (input cleanup)
 
     Given the frontend sends a skill list with blank/whitespace entries
-    When I PUT /api/seekers/{id}/skills
+    When I PUT /api/seekers/me/skills
     Then blank entries are dropped rather than stored
     """
-    r = client.put("/api/seekers/8/skills", json={"skills": ["Python", "  ", ""]})
+    _login_new_seeker(client, "8")
+    r = client.put("/api/seekers/me/skills", json={"skills": ["Python", "  ", ""]})
     assert r.status_code == 200
     assert r.json()["skills"] == ["Python"]
 
@@ -169,13 +183,14 @@ def test_upload_resume_pdf_succeeds(client, tmp_path):
     """
     US-03: Upload resume
 
-    Given a seeker has a valid PDF file
-    When they POST it to /api/seekers/{id}/resume
+    Given a logged-in seeker has a valid PDF file
+    When they POST it to /api/seekers/me/resume
     Then it's accepted and the filename is recorded on their profile
     """
+    _login_new_seeker(client, "5")
     fake_pdf = io.BytesIO(b"%PDF-1.4 fake content for testing")
     r = client.post(
-        "/api/seekers/5/resume",
+        "/api/seekers/me/resume",
         files={"file": ("resume.pdf", fake_pdf, "application/pdf")},
     )
     assert r.status_code == 201
@@ -188,13 +203,14 @@ def test_upload_resume_rejects_wrong_file_type(client):
     """
     US-03: Upload resume (validation)
 
-    Given a seeker tries to upload a .jpg file
-    When they POST it to /api/seekers/{id}/resume
+    Given a logged-in seeker tries to upload a .jpg file
+    When they POST it to /api/seekers/me/resume
     Then they receive 400 Bad Request, and no profile change happens
     """
+    _login_new_seeker(client, "5b")
     fake_image = io.BytesIO(b"not a real jpg but wrong content-type is what matters here")
     r = client.post(
-        "/api/seekers/5/resume",
+        "/api/seekers/me/resume",
         files={"file": ("photo.jpg", fake_image, "image/jpeg")},
     )
     assert r.status_code == 400
@@ -204,13 +220,14 @@ def test_upload_resume_rejects_oversized_file(client):
     """
     US-03: Upload resume (size limit)
 
-    Given a seeker tries to upload a PDF larger than 5 MB
-    When they POST it to /api/seekers/{id}/resume
+    Given a logged-in seeker tries to upload a PDF larger than 5 MB
+    When they POST it to /api/seekers/me/resume
     Then they receive 400 Bad Request
     """
+    _login_new_seeker(client, "5c")
     oversized = io.BytesIO(b"0" * (5 * 1024 * 1024 + 1))
     r = client.post(
-        "/api/seekers/5/resume",
+        "/api/seekers/me/resume",
         files={"file": ("big_resume.pdf", oversized, "application/pdf")},
     )
     assert r.status_code == 400
@@ -346,8 +363,10 @@ def test_list_jobs_without_seeker_id_has_no_match_data(client, sample_job):
 
 
 def test_list_jobs_with_seeker_id_shows_match_data(client, sample_job):
-    client.put("/api/seekers/80/skills", json={"skills": ["Python", "SQL"]})
-    r = client.get("/api/jobs?seeker_id=80")
+    _login_new_seeker(client, "80")
+    client.put("/api/seekers/me/skills", json={"skills": ["Python", "SQL"]})
+    profile_id = client.get("/api/seekers/me").json()["seeker_id"]
+    r = client.get(f"/api/jobs?seeker_id={profile_id}")
     assert r.status_code == 200
     body = r.json()[0]
     assert body["match_percentage"] == 67
@@ -362,8 +381,10 @@ def test_sort_by_match_orders_best_match_first(client, db_session):
             skills_required="Python", status="open"),
     ])
     db_session.commit()
-    client.put("/api/seekers/81/skills", json={"skills": ["Python"]})
-    r = client.get("/api/jobs?seeker_id=81&sort_by=match")
+    _login_new_seeker(client, "81")
+    client.put("/api/seekers/me/skills", json={"skills": ["Python"]})
+    profile_id = client.get("/api/seekers/me").json()["seeker_id"]
+    r = client.get(f"/api/jobs?seeker_id={profile_id}&sort_by=match")
     assert r.status_code == 200
     titles = [job["title"] for job in r.json()]
     assert titles[0] == "High match job"
@@ -472,14 +493,16 @@ def test_recommended_jobs_scores_by_skill_overlap(client, db_session):
     When I fetch recommended jobs for that seeker
     Then the job is returned with a 67% match (2 of 3 required skills)
     """
-    client.put("/api/seekers/50/skills", json={"skills": ["Python", "SQL"]})
+    _login_new_seeker(client, "50")
+    client.put("/api/seekers/me/skills", json={"skills": ["Python", "SQL"]})
+    profile_id = client.get("/api/seekers/me").json()["seeker_id"]
     db_session.add(
         Job(employer_id=1, title="Matched job", description="x" * 60,
             skills_required="Python,SQL,Docker", status="open")
     )
     db_session.commit()
 
-    r = client.get("/api/jobs/recommended?seeker_id=50")
+    r = client.get(f"/api/jobs/recommended?seeker_id={profile_id}")
     assert r.status_code == 200
     results = r.json()
     assert len(results) == 1
@@ -492,14 +515,16 @@ def test_recommended_jobs_excludes_zero_overlap(client, db_session):
     When I fetch recommended jobs
     Then that job is excluded entirely (0% match doesn't clear the min_match bar)
     """
-    client.put("/api/seekers/51/skills", json={"skills": ["Photoshop"]})
+    _login_new_seeker(client, "51")
+    client.put("/api/seekers/me/skills", json={"skills": ["Photoshop"]})
+    profile_id = client.get("/api/seekers/me").json()["seeker_id"]
     db_session.add(
         Job(employer_id=1, title="Unrelated job", description="x" * 60,
             skills_required="Python,SQL", status="open")
     )
     db_session.commit()
 
-    r = client.get("/api/jobs/recommended?seeker_id=51")
+    r = client.get(f"/api/jobs/recommended?seeker_id={profile_id}")
     assert r.json() == []
 
 
@@ -516,28 +541,30 @@ def test_recommended_jobs_empty_when_seeker_has_no_skills(client):
 
 def test_update_profile_info(client):
     """
-    Given a seeker fills in their personal details
-    When I PUT /api/seekers/{id} with name/email/phone/bio
+    Given a logged-in seeker fills in their personal details
+    When I PUT /api/seekers/me with name/email/phone/bio
     Then the profile reflects those values
     """
+    _login_new_seeker(client, "60")
     r = client.put(
-        "/api/seekers/60",
-        json={"full_name": "Jane Doe", "email": "jane@test.com", "phone": "012-3456789", "bio": "Hello."},
+        "/api/seekers/me",
+        json={"full_name": "Jane Doe", "email": "jane-profile-update@test.com", "phone": "012-3456789", "bio": "Hello."},
     )
     assert r.status_code == 200
     body = r.json()
     assert body["full_name"] == "Jane Doe"
-    assert body["email"] == "jane@test.com"
+    assert body["email"] == "jane-profile-update@test.com"
 
 
 def test_add_and_delete_experience(client):
     """
-    Given a seeker adds a work experience entry
+    Given a logged-in seeker adds a work experience entry
     When I POST then DELETE it
     Then it appears after adding and disappears after deleting
     """
+    _login_new_seeker(client, "61")
     r = client.post(
-        "/api/seekers/61/experience",
+        "/api/seekers/me/experience",
         json={"job_title": "Intern", "company_name": "TechCo", "start_date": "2023", "end_date": "2024",
               "description": "Did things."},
     )
@@ -546,7 +573,7 @@ def test_add_and_delete_experience(client):
     assert len(body["experience"]) == 1
     exp_id = body["experience"][0]["id"]
 
-    r2 = client.delete(f"/api/seekers/61/experience/{exp_id}")
+    r2 = client.delete(f"/api/seekers/me/experience/{exp_id}")
     assert r2.status_code == 200
     assert r2.json()["experience"] == []
 
@@ -557,25 +584,27 @@ def test_delete_experience_not_found_returns_404(client):
     When I try to delete it
     Then I get 404, not a silent success
     """
-    r = client.delete("/api/seekers/62/experience/999")
+    _login_new_seeker(client, "62")
+    r = client.delete("/api/seekers/me/experience/999")
     assert r.status_code == 404
 
 
 def test_add_and_delete_education(client):
     """
-    Given a seeker adds an education entry
+    Given a logged-in seeker adds an education entry
     When I POST then DELETE it
     Then it appears after adding and disappears after deleting
     """
+    _login_new_seeker(client, "63")
     r = client.post(
-        "/api/seekers/63/education",
+        "/api/seekers/me/education",
         json={"institution": "USM", "degree": "Bachelor's Degree", "field_of_study": "Computer Science",
               "start_date": "2019", "end_date": "2023"},
     )
     assert r.status_code == 201
     edu_id = r.json()["education"][0]["id"]
 
-    r2 = client.delete(f"/api/seekers/63/education/{edu_id}")
+    r2 = client.delete(f"/api/seekers/me/education/{edu_id}")
     assert r2.status_code == 200
     assert r2.json()["education"] == []
 
@@ -590,9 +619,10 @@ def test_upload_rejects_spoofed_content_type(client):
     Then the upload is rejected, because we check the real file bytes,
     not the browser-supplied header
     """
+    _login_new_seeker(client, "70")
     fake = io.BytesIO(b"just plain text, not a real PDF at all")
     r = client.post(
-        "/api/seekers/70/resume",
+        "/api/seekers/me/resume",
         files={"file": ("resume.pdf", fake, "application/pdf")},
     )
     assert r.status_code == 400
@@ -604,10 +634,11 @@ def test_upload_accepts_real_docx_content(client):
     When uploaded with a .docx filename
     Then it's accepted, because DOCX files are zip archives under the hood
     """
+    _login_new_seeker(client, "71")
     # Minimal valid zip file signature — enough to pass the magic-byte check.
     fake_docx = io.BytesIO(b"PK\x03\x04" + b"0" * 50)
     r = client.post(
-        "/api/seekers/71/resume",
+        "/api/seekers/me/resume",
         files={"file": ("resume.docx", fake_docx,
                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
     )
@@ -623,9 +654,10 @@ def test_upload_path_traversal_filename_is_neutralized(client):
     Then the upload still succeeds (content is valid), and the DISPLAYED
     filename has been stripped of any directory components
     """
+    _login_new_seeker(client, "72")
     real_pdf = io.BytesIO(b"%PDF-1.4 fake but valid-looking pdf content")
     r = client.post(
-        "/api/seekers/72/resume",
+        "/api/seekers/me/resume",
         files={"file": ("resume.pdf/../../../../etc/passwd", real_pdf, "application/pdf")},
     )
     assert r.status_code == 201
@@ -636,22 +668,24 @@ def test_upload_path_traversal_filename_is_neutralized(client):
 
 def test_profile_info_rejects_invalid_email(client):
     """
-    Given a seeker submits something that isn't a real email address
-    When I PUT /api/seekers/{id} with that value in the email field
+    Given a logged-in seeker submits something that isn't a real email address
+    When I PUT /api/seekers/me with that value in the email field
     Then the request is rejected with a validation error, not silently saved
     """
-    r = client.put("/api/seekers/73", json={"email": "not an email at all"})
+    _login_new_seeker(client, "73")
+    r = client.put("/api/seekers/me", json={"email": "not an email at all"})
     assert r.status_code == 422
 
 
 def test_profile_info_rejects_empty_email(client):
     """
     Given name/email/phone are all required on the profile form
-    When I PUT /api/seekers/{id} with an empty email string
+    When I PUT /api/seekers/me with an empty email string
     Then it's rejected rather than silently saved
     """
+    _login_new_seeker(client, "74")
     r = client.put(
-        "/api/seekers/74",
+        "/api/seekers/me",
         json={"full_name": "Jane Doe", "email": "", "phone": "012-3456789"},
     )
     assert r.status_code == 422
@@ -660,12 +694,13 @@ def test_profile_info_rejects_empty_email(client):
 def test_profile_info_rejects_name_with_digits(client):
     """
     Given a name field must not contain numbers
-    When I PUT /api/seekers/{id} with a digit in full_name
+    When I PUT /api/seekers/me with a digit in full_name
     Then the request is rejected
     """
+    _login_new_seeker(client, "76")
     r = client.put(
-        "/api/seekers/76",
-        json={"full_name": "Jane2 Doe", "email": "jane@test.com", "phone": "012-3456789"},
+        "/api/seekers/me",
+        json={"full_name": "Jane2 Doe", "email": "jane76@test.com", "phone": "012-3456789"},
     )
     assert r.status_code == 422
 
@@ -673,12 +708,13 @@ def test_profile_info_rejects_name_with_digits(client):
 def test_profile_info_rejects_phone_with_letters(client):
     """
     Given a phone field must only contain digits/phone punctuation
-    When I PUT /api/seekers/{id} with letters in the phone field
+    When I PUT /api/seekers/me with letters in the phone field
     Then the request is rejected
     """
+    _login_new_seeker(client, "77")
     r = client.put(
-        "/api/seekers/77",
-        json={"full_name": "Jane Doe", "email": "jane@test.com", "phone": "012-EXAMPLE"},
+        "/api/seekers/me",
+        json={"full_name": "Jane Doe", "email": "jane77@test.com", "phone": "012-EXAMPLE"},
     )
     assert r.status_code == 422
 
@@ -686,11 +722,12 @@ def test_profile_info_rejects_phone_with_letters(client):
 def test_experience_description_length_is_capped(client):
     """
     Given someone submits a work experience description longer than the cap
-    When I POST /api/seekers/{id}/experience
+    When I POST /api/seekers/me/experience
     Then the request is rejected rather than silently truncated or stored in full
     """
+    _login_new_seeker(client, "75")
     r = client.post(
-        "/api/seekers/75/experience",
+        "/api/seekers/me/experience",
         json={
             "job_title": "Dev",
             "company_name": "Co",
@@ -702,11 +739,12 @@ def test_experience_description_length_is_capped(client):
 
 def test_parse_resume_not_found_when_none_uploaded(client):
     """
-    Given a seeker who has never uploaded a resume
-    When I GET /api/seekers/{id}/resume/parse
+    Given a logged-in seeker who has never uploaded a resume
+    When I GET /api/seekers/me/resume/parse
     Then I get 404, not a crash or empty-but-200 response
     """
-    r = client.get("/api/seekers/999/resume/parse")
+    _login_new_seeker(client, "999")
+    r = client.get("/api/seekers/me/resume/parse")
     assert r.status_code == 404
 
 
@@ -733,6 +771,7 @@ def test_parse_extracts_multiple_experience_entries(client):
     When I scan the resume
     Then both entries are extracted with correct titles, companies, and dates
     """
+    _login_new_seeker(client, "80")
     pdf_bytes = _make_pdf_bytes([
         "Test Person", "test@example.com",
         "EXPERIENCE",
@@ -747,9 +786,9 @@ def test_parse_extracts_multiple_experience_entries(client):
         "Bachelor of Science in Computer Science",
         "2019 - 2023",
     ])
-    client.post("/api/seekers/80/resume", files={"file": ("resume.pdf", io.BytesIO(pdf_bytes), "application/pdf")})
+    client.post("/api/seekers/me/resume", files={"file": ("resume.pdf", io.BytesIO(pdf_bytes), "application/pdf")})
 
-    r = client.get("/api/seekers/80/resume/parse")
+    r = client.get("/api/seekers/me/resume/parse")
     assert r.status_code == 200
     body = r.json()
 
@@ -767,6 +806,7 @@ def test_parse_extracts_education_entry(client):
     When I scan the resume
     Then institution, degree, field of study, and dates are extracted
     """
+    _login_new_seeker(client, "81b")
     pdf_bytes = _make_pdf_bytes([
         "Test Person", "test@example.com",
         "EDUCATION",
@@ -774,9 +814,9 @@ def test_parse_extracts_education_entry(client):
         "Bachelor of Science in Computer Science",
         "2019 - 2023",
     ])
-    client.post("/api/seekers/81/resume", files={"file": ("resume.pdf", io.BytesIO(pdf_bytes), "application/pdf")})
+    client.post("/api/seekers/me/resume", files={"file": ("resume.pdf", io.BytesIO(pdf_bytes), "application/pdf")})
 
-    r = client.get("/api/seekers/81/resume/parse")
+    r = client.get("/api/seekers/me/resume/parse")
     body = r.json()
     assert len(body["education"]) == 1
     assert body["education"][0]["institution"] == "Test University"
@@ -790,9 +830,75 @@ def test_parse_resume_with_no_experience_section_returns_empty_list(client):
     When I scan the resume
     Then experience is an empty list, not an error
     """
+    _login_new_seeker(client, "82")
     pdf_bytes = _make_pdf_bytes(["Test Person", "test@example.com", "SKILLS", "Python, SQL"])
-    client.post("/api/seekers/82/resume", files={"file": ("resume.pdf", io.BytesIO(pdf_bytes), "application/pdf")})
+    client.post("/api/seekers/me/resume", files={"file": ("resume.pdf", io.BytesIO(pdf_bytes), "application/pdf")})
 
-    r = client.get("/api/seekers/82/resume/parse")
+    r = client.get("/api/seekers/me/resume/parse")
     assert r.status_code == 200
     assert r.json()["experience"] == []
+
+
+def test_seeker_endpoint_requires_login(client):
+    """
+    Given nobody is logged in
+    When I try to fetch "my" profile
+    Then I get 401, not a crash or someone else's data
+    """
+    r = client.get("/api/seekers/me")
+    assert r.status_code == 401
+
+
+def test_seeker_endpoint_rejects_employer_session(client):
+    """
+    Given someone is logged in as an EMPLOYER, not a seeker
+    When they try to fetch "my" seeker profile
+    Then they get 401 — the seeker-only endpoints aren't for them
+    """
+    client.post("/api/auth/register/employer", json={
+        "company_name": "Some Co", "email": "not-a-seeker@example.com", "password": "correcthorse",
+    })
+    r = client.get("/api/seekers/me")
+    assert r.status_code == 401
+
+
+def test_seeker_can_only_see_own_profile_data(client):
+    """
+    Given two different registered seekers, each with their own experience entry
+    When seeker B fetches "my" profile
+    Then they see only their own data, never seeker A's
+    """
+    _login_new_seeker(client, "ownerA", full_name="Seeker A")
+    client.post("/api/seekers/me/experience", json={
+        "job_title": "A's job", "company_name": "A Co",
+    })
+    client.post("/api/auth/logout")
+
+    _login_new_seeker(client, "ownerB", full_name="Seeker B")
+    r = client.get("/api/seekers/me")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["full_name"] == "Seeker B"
+    assert body["experience"] == []
+
+
+def test_applications_fragment_requires_login(client):
+    """
+    Given nobody is logged in
+    When I GET /my-applications-fragment
+    Then I get 401, not a page rendered for the wrong/no user
+    """
+    r = client.get("/my-applications-fragment")
+    assert r.status_code == 401
+
+
+def test_applications_fragment_works_for_logged_in_seeker(client):
+    """
+    Given a logged-in seeker with no applications yet
+    When I GET /my-applications-fragment
+    Then I get a 200 with the empty-state message, not an error
+    """
+    _login_new_seeker(client, "fragtest")
+    r = client.get("/my-applications-fragment")
+    assert r.status_code == 200
+    assert "haven't submitted any job applications" in r.text
