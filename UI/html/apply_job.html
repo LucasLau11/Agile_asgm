@@ -24,12 +24,7 @@
   </div>
 </header>
 
-<!--
-  Was hardcoded to "Acting as: Seeker #1 — Aisha" as plain text, with no
-  way to actually change who's applying. Swapped for the same live
-  dev-user dropdown every other page uses, so this page reflects and
-  changes with whoever is actually selected.
--->
+
 <div class="dev-user-bar" id="devUserBar"></div>
 
 <main class="page">
@@ -60,9 +55,7 @@
 
     <form action="/apply" method="POST" enctype="multipart/form-data">
       <input type="hidden" name="job_id" value="{{ job.id }}">
-      <!-- Filled in by JS below from the dev-user dropdown / URL, so the
-           backend knows WHICH seeker is submitting this application
-           instead of defaulting to seeker #1 every time. -->
+  
       <input type="hidden" name="seeker_id" id="seekerIdField" value="{{ seeker_id }}">
 
       <div class="form-group">
