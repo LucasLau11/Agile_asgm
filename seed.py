@@ -1,10 +1,3 @@
-"""
-Seed script: populates the local dev database with sample jobs (across a
-spread of states, salaries, and job types so the new filters have something
-real to filter) plus a sample seeker profile so the recommendation engine
-has data to work with.
-"""
-
 import sys
 
 sys.path.insert(0, "src")
