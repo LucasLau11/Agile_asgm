@@ -185,6 +185,54 @@ def get_current_account(
     return {"role": session.account_type, "id": session.account_id}
 
 
+def require_role(role: str, message: Optional[str] = None):
+    """Dependency factory: Depends(require_role("seeker")) raises 401 if the
+    session isn't logged in as that role, otherwise resolves directly to the
+    account's id — skipping the `account["role"] != role` boilerplate every
+    call site used to repeat. Replaces the one-off _require_seeker helper
+    that used to live in routes/seeker.py, and the inline role check in
+    applications.py's fragment endpoint."""
+    detail = message or f"Must be logged in as a {role}."
+
+    def _dependency(account: dict = Depends(get_current_account)) -> int:
+        if account["role"] != role:
+            raise HTTPException(status_code=401, detail=detail)
+        return account["id"]
+
+    return _dependency
+
+
+def require_participant_role(message: Optional[str] = None):
+    """Dependency factory for endpoints usable by EITHER a seeker or an
+    employer (but not admin) — returns the full account dict {role, id},
+    unlike require_role which only returns an id for one fixed role.
+    Messaging is the first surface in this app where the actor's role
+    genuinely varies per request rather than being fixed by the route."""
+    detail = message or "Must be logged in as a seeker or employer."
+
+    def _dependency(account: dict = Depends(get_current_account)) -> dict:
+        if account["role"] not in ("seeker", "employer"):
+            raise HTTPException(status_code=401, detail=detail)
+        return account
+
+    return _dependency
+
+
+def get_current_account_optional(
+    session_token: Optional[str] = Cookie(None, alias=SESSION_COOKIE_NAME),
+    db: DBSession = Depends(get_db),
+) -> Optional[dict]:
+    """Like get_current_account, but resolves to None instead of raising
+    when there's no valid session — for endpoints where personalization is
+    a bonus, not a requirement (e.g. public job browsing)."""
+    if not session_token:
+        return None
+    session = get_session(db, session_token)
+    if session is None:
+        return None
+    return {"role": session.account_type, "id": session.account_id}
+
+
 @router.get("/me", response_model=AuthAccountOut)
 def get_me(account: dict = Depends(get_current_account), db: DBSession = Depends(get_db)) -> AuthAccountOut:
     role, account_id = account["role"], account["id"]

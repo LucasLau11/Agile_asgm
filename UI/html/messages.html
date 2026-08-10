@@ -82,9 +82,12 @@
   <script src="../js/api.js"></script>
   <script>
     const params = new URLSearchParams(location.search);
-    const role = params.get("role") === "employer" ? "employer" : "seeker";
-    const otherRole = role === "seeker" ? "employer" : "seeker";
-    const userId = role === "employer" ? getCurrentEmployerId() : getCurrentSeekerId();
+    // The old ?role= URL param is no longer read for identity — it's
+    // vestigial now that role comes from the real session, left harmless
+    // rather than scrubbing it from every page that links here.
+    let role = null;
+    let otherRole = null;
+    let userId = null;
 
     const deepLinkOtherId = params.get("other") ? Number(params.get("other")) : null;
     const deepLinkJobId = params.get("job") ? Number(params.get("job")) : null;
@@ -115,7 +118,6 @@
               <a href="/UI/html/notifications.html">Notifications</a>
               <a href="/UI/html/profile.html">Profile</a>
             </nav>
-            <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
           </div>`;
       } else {
         header.innerHTML = `
@@ -127,16 +129,7 @@
               <a href="/UI/html/messages.html?role=employer" class="active">Messages</a>
               <a href="/UI/html/employer_notifications.html">Notifications</a>
             </nav>
-            <a href="/UI/html/browse_job.html" class="role-switch">Job Seeker</a>
           </div>`;
-      }
-    }
-
-    function renderDevBar() {
-      if (role === "seeker") {
-        renderDevUserBar("devUserBar");
-      } else {
-        renderDevEmployerBar("devUserBar");
       }
     }
 
@@ -181,7 +174,7 @@
           const id = Number(btn.dataset.id);
           if (!confirm("Delete this conversation from your inbox? The other person will still see it.")) return;
           try {
-            await deleteConversation(id, role, userId);
+            await deleteConversation(id);
             if (id === activeConversationId) {
               activeConversationId = null;
               activeThread = null;
@@ -198,7 +191,7 @@
 
     async function loadConversations() {
       try {
-        conversations = await fetchConversations(role, userId);
+        conversations = await fetchConversations();
         document.getElementById("pageSubtitle").textContent =
           role === "seeker" ? "Your conversations with employers." : "Your conversations with job seekers.";
         renderConversationList();
@@ -218,13 +211,12 @@
 
     function attachmentHtml(m) {
       if (!m.attachment_url) return "";
-      const authedUrl = attachmentUrlFor(m.attachment_url, role, userId);
       if (m.attachment_type === "image") {
-        return `<a href="${authedUrl}" target="_blank" rel="noopener">
-          <img class="attachment-image" src="${authedUrl}" alt="${escapeHtml(m.attachment_filename || "attachment")}" />
+        return `<a href="${m.attachment_url}" target="_blank" rel="noopener">
+          <img class="attachment-image" src="${m.attachment_url}" alt="${escapeHtml(m.attachment_filename || "attachment")}" />
         </a>`;
       }
-      return `<a class="attachment-file" href="${authedUrl}" target="_blank" rel="noopener">
+      return `<a class="attachment-file" href="${m.attachment_url}" target="_blank" rel="noopener">
         📄 ${escapeHtml(m.attachment_filename || "Download file")}
       </a>`;
     }
@@ -415,7 +407,7 @@
         blockButton.addEventListener("click", async () => {
           if (!confirm(`Block ${threadData.other_party_name}? Neither of you will be able to send new messages until you unblock them.`)) return;
           try {
-            await blockConversation(threadData.conversation_id, role, userId);
+            await blockConversation(threadData.conversation_id);
             await loadConversations();
             await refreshActiveThread({ force: true });
           } catch (err) {
@@ -426,7 +418,7 @@
       if (unblockButton) {
         unblockButton.addEventListener("click", async () => {
           try {
-            await unblockConversation(threadData.conversation_id, role, userId);
+            await unblockConversation(threadData.conversation_id);
             await loadConversations();
             await refreshActiveThread({ force: true });
           } catch (err) {
@@ -438,7 +430,7 @@
       document.getElementById("deleteConvoBtn").addEventListener("click", async () => {
         if (!confirm("Delete this conversation from your inbox? The other person will still see it.")) return;
         try {
-          await deleteConversation(threadData.conversation_id, role, userId);
+          await deleteConversation(threadData.conversation_id);
           activeConversationId = null;
           activeThread = null;
           document.getElementById("chatPane").innerHTML =
@@ -487,7 +479,7 @@
           const label = response === "accepted" ? "accept" : "decline";
           if (!confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} this interview invitation?`)) return;
           try {
-            await respondToInterview(messageId, userId, response);
+            await respondToInterview(messageId, response);
             await loadConversations();
             await refreshActiveThread({ force: true });
           } catch (err) {
@@ -505,7 +497,7 @@
           if (action === "cancel") {
             if (!confirm("Cancel this interview invitation? The candidate will be notified.")) return;
             try {
-              await cancelInterview(messageId, userId);
+              await cancelInterview(messageId);
               await loadConversations();
               await refreshActiveThread({ force: true });
             } catch (err) {
@@ -528,7 +520,7 @@
 
     async function handleDelete(messageId, scope) {
       try {
-        await deleteMessage(messageId, role, userId, scope);
+        await deleteMessage(messageId, scope);
         await loadConversations();
         await refreshActiveThread({ force: true });
       } catch (err) {
@@ -558,7 +550,7 @@
         const newBody = row.querySelector(".edit-textarea").value.trim();
         if (!newBody) return;
         try {
-          await editMessage(messageId, role, userId, newBody);
+          await editMessage(messageId, newBody);
           editingMessageId = null;
           await loadConversations();
           await refreshActiveThread({ force: true });
@@ -597,8 +589,6 @@
         try {
           if (pendingFile) {
             await sendMessageWithAttachment({
-              senderRole: role,
-              senderId: userId,
               recipientId: threadData.other_party_id,
               body: bodyText,
               file: pendingFile,
@@ -608,8 +598,6 @@
             preview.style.display = "none";
           } else {
             await sendMessage({
-              senderRole: role,
-              senderId: userId,
               recipientId: threadData.other_party_id,
               body: bodyText,
             });
@@ -638,7 +626,7 @@
       editingMessageId = null;
       renderConversationList();
       try {
-        const threadData = await fetchConversationMessages(conversationId, role, userId);
+        const threadData = await fetchConversationMessages(conversationId);
         renderChat(threadData);
       } catch (err) {
         document.getElementById("chatPane").innerHTML =
@@ -654,7 +642,7 @@
       if (!activeConversationId) return;
       if (editingMessageId && !force) return;
       try {
-        const threadData = await fetchConversationMessages(activeConversationId, role, userId);
+        const threadData = await fetchConversationMessages(activeConversationId);
         const changed = !activeThread || threadSignature(threadData) !== threadSignature(activeThread);
         const blockStateChanged = !activeThread
           || threadData.is_blocked !== activeThread.is_blocked
@@ -708,8 +696,6 @@
       }
       try {
         const sent = await sendMessage({
-          senderRole: role,
-          senderId: userId,
           recipientId,
           body,
           jobId: deepLinkJobId,
@@ -798,12 +784,12 @@
 
       try {
         if (reschedulingMessageId) {
-          await rescheduleInterview(reschedulingMessageId, userId, details);
+          await rescheduleInterview(reschedulingMessageId, details);
           closeInterviewModal();
           await loadConversations();
           await refreshActiveThread({ force: true });
         } else {
-          const sent = await sendInterviewInvite(userId, interviewRecipientId, deepLinkJobId, details);
+          const sent = await sendInterviewInvite(interviewRecipientId, deepLinkJobId, details);
           closeInterviewModal();
           await loadConversations();
           await openConversation(sent.conversation_id);
@@ -817,13 +803,19 @@
     // ---------- Init + polling ----------
 
     async function init() {
+      const account = await requireLoginAnyRole(["seeker", "employer"]);
+      if (!account) return;
+      role = account.role;
+      otherRole = role === "seeker" ? "employer" : "seeker";
+      userId = account.id;
+
       renderTopbar();
-      renderDevBar();
+      renderAccountBar("devUserBar", account);
       await loadConversations();
 
       if (deepLinkOtherId) {
         try {
-          const { conversation_id } = await findOrCreateConversation(role, userId, deepLinkOtherId);
+          const { conversation_id } = await findOrCreateConversation(deepLinkOtherId);
           await loadConversations();
           await openConversation(conversation_id);
         } catch (err) {

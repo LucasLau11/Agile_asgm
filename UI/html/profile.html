@@ -18,7 +18,6 @@
       <a href="/UI/html/notifications.html">Notifications</a>
       <a href="/UI/html/profile.html">Profile</a>
     </nav>
-    <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
   </div>
 </header>
   <div class="dev-user-bar" id="devUserBar"></div>
@@ -195,10 +194,16 @@
 
   <script src="../js/api.js"></script>
   <script>
-    renderDevUserBar("devUserBar");
-    const seekerId = getCurrentSeekerId();
-
     let profileData = null; // holds the full profile response between renders
+    let account = null; // the logged-in seeker's account (role, id, email, display_name)
+
+    async function init() {
+      account = await requireLogin("seeker");
+      if (!account) return;
+      renderAccountBar("devUserBar", account);
+      await loadProfile();
+      await injectApplicationsTracker();
+    }
 
     // ============================ Personal info ============================
 
@@ -301,7 +306,7 @@
       if (!validateInfoForm()) return;
       setButtonBusy(submitBtn, true, "Saving…");
       try {
-        profileData = await updateProfileInfo(seekerId, {
+        profileData = await updateProfileInfo({
           full_name: document.getElementById("fullNameInput").value.trim(),
           email: document.getElementById("emailInput").value.trim(),
           phone: document.getElementById("phoneInput").value.trim(),
@@ -351,7 +356,7 @@
     async function saveSkills(skills) {
       const statusEl = document.getElementById("skillsStatus");
       try {
-        profileData = await updateSeekerSkills(seekerId, skills);
+        profileData = await updateSeekerSkills(skills);
         renderSkills();
         statusEl.textContent = "Skills saved.";
         statusEl.className = "status-msg success";
@@ -397,7 +402,7 @@
 
       listEl.querySelectorAll(".entry-delete").forEach((btn) => {
         btn.addEventListener("click", async () => {
-          profileData = await deleteExperience(seekerId, btn.dataset.id);
+          profileData = await deleteExperience(btn.dataset.id);
           renderExperience();
         });
       });
@@ -450,7 +455,7 @@
         return;
       }
 
-      profileData = await addExperience(seekerId, {
+      profileData = await addExperience({
         job_title: document.getElementById("expTitleInput").value.trim(),
         company_name: document.getElementById("expCompanyInput").value.trim(),
         start_date: combineDateSelects(startMonth, startYear),
@@ -492,7 +497,7 @@
 
       listEl.querySelectorAll(".entry-delete").forEach((btn) => {
         btn.addEventListener("click", async () => {
-          profileData = await deleteEducation(seekerId, btn.dataset.id);
+          profileData = await deleteEducation(btn.dataset.id);
           renderEducation();
         });
       });
@@ -524,7 +529,7 @@
     document.getElementById("educationForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const isCurrent = document.getElementById("eduCurrentCheckbox").checked;
-      profileData = await addEducation(seekerId, {
+      profileData = await addEducation({
         institution: document.getElementById("eduInstitutionInput").value.trim(),
         degree: document.getElementById("eduDegreeInput").value,
         field_of_study: document.getElementById("eduFieldInput").value,
@@ -607,7 +612,7 @@
       const panel = document.getElementById("scanResultsPanel");
       panel.innerHTML = `<p class="status-msg" style="margin-top:10px;">Scanning your resume…</p>`;
       try {
-        const suggestions = await scanResume(seekerId);
+        const suggestions = await scanResume();
 
         if (!suggestions.text_extracted) {
           panel.innerHTML = `
@@ -715,7 +720,7 @@
                 return;
               }
 
-              profileData = await updateProfileInfo(seekerId, {
+              profileData = await updateProfileInfo({
                 full_name: mergedName,
                 email: mergedEmail,
                 phone: mergedPhone,
@@ -725,7 +730,7 @@
             }
 
             if (checked("skills") && newSkills.length > 0) {
-              profileData = await updateSeekerSkills(seekerId, [...profileData.skills, ...newSkills]);
+              profileData = await updateSeekerSkills([...profileData.skills, ...newSkills]);
               renderSkills();
             }
 
@@ -736,7 +741,7 @@
               .map((el) => Number(el.dataset.index));
             for (const i of checkedExperienceIndexes) {
               const exp = suggestions.experience[i];
-              profileData = await addExperience(seekerId, {
+              profileData = await addExperience({
                 job_title: exp.job_title || "Untitled role",
                 company_name: exp.company_name || "Unknown company",
                 start_date: exp.start_date,
@@ -750,7 +755,7 @@
               .map((el) => Number(el.dataset.index));
             for (const i of checkedEducationIndexes) {
               const edu = suggestions.education[i];
-              profileData = await addEducation(seekerId, {
+              profileData = await addEducation({
                 institution: edu.institution || "Unknown institution",
                 degree: edu.degree,
                 field_of_study: edu.field_of_study,
@@ -808,7 +813,7 @@
       statusEl.textContent = "Uploading…";
       statusEl.className = "status-msg";
       try {
-        profileData = await uploadResume(seekerId, file);
+        profileData = await uploadResume(file);
         renderResumeCurrent();
         statusEl.textContent = "Resume uploaded.";
         statusEl.className = "status-msg success";
@@ -822,7 +827,7 @@
 
     async function loadProfile() {
       try {
-        profileData = await fetchSeekerProfile(seekerId);
+        profileData = await fetchSeekerProfile();
         renderInfoDisplay();
         renderSkills();
         renderExperience();
@@ -835,7 +840,7 @@
     }
     async function injectApplicationsTracker() {
       try {
-        const response = await fetch(`/my-applications-fragment?seeker_id=${seekerId}`);
+        const response = await fetch(`/my-applications-fragment`, { credentials: "include" });
         if (response.ok) {
           document.getElementById('applicationsTrackerContainer').innerHTML = await response.text();
         }
@@ -843,9 +848,8 @@
         console.error("Unable to cross-mount structural applications table log:", err);
       }
     }
-    // Fire injection on load lifecycle hooks
-    window.addEventListener('DOMContentLoaded', injectApplicationsTracker);
-    loadProfile();
+
+    init();
   </script>
 </body>
 </html>

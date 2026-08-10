@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from job_portal.database import get_db
 from job_portal.models import Conversation, InterviewInvite, Message, Notification, SeekerProfile
 from job_portal.routes.applications import EMPLOYER_DIRECTORY
+from job_portal.routes.auth import require_participant_role, require_role
 from job_portal.schemas import (
     ConversationOut,
     InterviewInviteCreate,
@@ -157,15 +158,20 @@ def _block_status(convo: Conversation, role: str) -> dict:
 
 
 @router.post("/api/messages")
-async def api_send_message(body: MessageCreate, db: Session = Depends(get_db)):
+async def api_send_message(
+    body: MessageCreate,
+    account: dict = Depends(require_participant_role()),
+    db: Session = Depends(get_db),
+):
     """US-40 / US-41: send a text message. Creates the (seeker, employer)
     conversation on first contact, appends the message, and notifies the
     recipient — but never the sender."""
+    sender_role, sender_id = account["role"], account["id"]
 
-    if body.sender_role == "seeker":
-        seeker_id, employer_id = body.sender_id, body.recipient_id
+    if sender_role == "seeker":
+        seeker_id, employer_id = sender_id, body.recipient_id
     else:
-        seeker_id, employer_id = body.recipient_id, body.sender_id
+        seeker_id, employer_id = body.recipient_id, sender_id
 
     convo = _get_or_create_conversation(db, seeker_id, employer_id)
     _require_unblocked(convo)
@@ -173,14 +179,14 @@ async def api_send_message(body: MessageCreate, db: Session = Depends(get_db)):
 
     message = Message(
         conversation_id=convo.id,
-        sender_role=body.sender_role,
-        sender_id=body.sender_id,
+        sender_role=sender_role,
+        sender_id=sender_id,
         body=encrypt_text(body.body),
         job_id=body.job_id,
     )
     db.add(message)
     convo.last_message_at = datetime.utcnow()
-    _notify_recipient(db, body.sender_role, body.sender_id, body.recipient_id, body.body)
+    _notify_recipient(db, sender_role, sender_id, body.recipient_id, body.body)
 
     db.commit()
     db.refresh(message)
@@ -193,12 +199,11 @@ async def api_send_message(body: MessageCreate, db: Session = Depends(get_db)):
 
 @router.post("/api/messages/attachment")
 async def api_send_message_with_attachment(
-    sender_role: str = Form(..., pattern="^(seeker|employer)$"),
-    sender_id: int = Form(...),
     recipient_id: int = Form(...),
     body: str = Form(""),
     job_id: Optional[int] = Form(None),
     file: UploadFile = File(...),
+    account: dict = Depends(require_participant_role()),
     db: Session = Depends(get_db),
 ):
     """Same as api_send_message, but attaches an image or document. The
@@ -223,6 +228,7 @@ async def api_send_message_with_attachment(
     if len(caption) > 4000:
         raise HTTPException(status_code=422, detail="Caption is too long (max 4000 characters).")
 
+    sender_role, sender_id = account["role"], account["id"]
     if sender_role == "seeker":
         seeker_id, employer_id = sender_id, recipient_id
     else:
@@ -264,20 +270,22 @@ async def api_send_message_with_attachment(
 @router.get("/api/messages/{message_id}/attachment")
 async def api_get_message_attachment(
     message_id: int,
-    role: str = Query(..., pattern="^(seeker|employer)$"),
-    user_id: int = Query(...),
+    account: dict = Depends(require_participant_role()),
     db: Session = Depends(get_db),
 ):
     """Decrypts and serves an attachment. Not exposed via the static
     /uploads mount — that would serve raw ciphertext — so this is the only
     way to actually retrieve one, and it checks conversation membership
-    the same way the message-list endpoint does."""
+    the same way the message-list endpoint does. Reached via a browser
+    <img src>/<a href> navigation, not fetch() — the session cookie still
+    rides along automatically for a same-origin resource load, so no
+    frontend change is needed to keep sending it."""
 
     message = db.query(Message).filter(Message.id == message_id).first()
     if not message or not message.attachment_url:
         raise HTTPException(status_code=404, detail="Attachment not found.")
 
-    _require_participant(message.conversation, role, user_id)
+    _require_participant(message.conversation, account["role"], account["id"])
 
     if not os.path.exists(message.attachment_url):
         raise HTTPException(status_code=404, detail="Attachment file is missing on the server.")
@@ -305,8 +313,7 @@ async def api_get_message_attachment(
 async def api_edit_message(
     message_id: int,
     body: MessageEdit,
-    role: str = Query(..., pattern="^(seeker|employer)$"),
-    user_id: int = Query(...),
+    account: dict = Depends(require_participant_role()),
     db: Session = Depends(get_db),
 ):
     """Sender-only, and only within EDIT_WINDOW_MINUTES of sending — matches
@@ -316,7 +323,7 @@ async def api_edit_message(
     message = db.query(Message).filter(Message.id == message_id).first()
     if not message:
         raise HTTPException(status_code=404, detail="Message not found.")
-    if message.sender_role != role or message.sender_id != user_id:
+    if message.sender_role != account["role"] or message.sender_id != account["id"]:
         raise HTTPException(status_code=403, detail="Only the sender can edit this message.")
     if message.is_deleted:
         raise HTTPException(status_code=400, detail="Can't edit a deleted message.")
@@ -339,10 +346,10 @@ async def api_edit_message(
 
 @router.post("/api/messages/interview-invite")
 async def api_send_interview_invite(
-    employer_id: int = Query(...),
     seeker_id: int = Query(...),
     job_id: Optional[int] = Query(None),
     body: InterviewInviteCreate = Body(...),
+    employer_id: int = Depends(require_role("employer", "Must be logged in as an employer.")),
     db: Session = Depends(get_db),
 ):
     """US-46: employer sends a structured interview invitation instead of
@@ -392,8 +399,8 @@ async def api_send_interview_invite(
 @router.post("/api/messages/{message_id}/interview-response")
 async def api_respond_to_interview(
     message_id: int,
-    user_id: int = Query(...),
     body: InterviewResponseIn = Body(...),
+    user_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
     db: Session = Depends(get_db),
 ):
     """US-47: seeker accepts or declines. The employer is notified either
@@ -429,8 +436,8 @@ async def api_respond_to_interview(
 @router.put("/api/messages/{message_id}/interview-reschedule")
 async def api_reschedule_interview(
     message_id: int,
-    employer_id: int = Query(...),
     body: InterviewInviteCreate = Body(...),
+    employer_id: int = Depends(require_role("employer", "Must be logged in as an employer.")),
     db: Session = Depends(get_db),
 ):
     """US-XX: employer reschedules an interview they sent. Resets status
@@ -474,7 +481,7 @@ async def api_reschedule_interview(
 @router.post("/api/messages/{message_id}/interview-cancel")
 async def api_cancel_interview(
     message_id: int,
-    employer_id: int = Query(...),
+    employer_id: int = Depends(require_role("employer", "Must be logged in as an employer.")),
     db: Session = Depends(get_db),
 ):
     """US-XX: employer cancels an interview they sent. Kept visible in the
@@ -522,9 +529,8 @@ def _best_effort_delete_attachment(path: Optional[str]) -> None:
 @router.delete("/api/messages/{message_id}")
 async def api_delete_message(
     message_id: int,
-    role: str = Query(..., pattern="^(seeker|employer)$"),
-    user_id: int = Query(...),
     scope: str = Query("me", pattern="^(me|everyone)$"),
+    account: dict = Depends(require_participant_role()),
     db: Session = Depends(get_db),
 ):
     """scope=me: hides the message only in the requester's own view — the
@@ -537,6 +543,7 @@ async def api_delete_message(
     if not message:
         raise HTTPException(status_code=404, detail="Message not found.")
 
+    role, user_id = account["role"], account["id"]
     _require_participant(message.conversation, role, user_id)
 
     if scope == "everyone":
@@ -564,13 +571,13 @@ async def api_delete_message(
 @router.post("/api/conversations/{conversation_id}/block")
 async def api_block_conversation_participant(
     conversation_id: int,
-    role: str = Query(..., pattern="^(seeker|employer)$"),
-    user_id: int = Query(...),
+    account: dict = Depends(require_participant_role()),
     db: Session = Depends(get_db),
 ):
     """Block the other participant from this conversation. History remains
     readable, but neither participant can send new messages until the person
     who set the block removes it."""
+    role, user_id = account["role"], account["id"]
 
     convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not convo:
@@ -586,12 +593,12 @@ async def api_block_conversation_participant(
 @router.delete("/api/conversations/{conversation_id}/block")
 async def api_unblock_conversation_participant(
     conversation_id: int,
-    role: str = Query(..., pattern="^(seeker|employer)$"),
-    user_id: int = Query(...),
+    account: dict = Depends(require_participant_role()),
     db: Session = Depends(get_db),
 ):
     """Remove the requester's own block. A block set by the other party,
     if any, remains in force."""
+    role, user_id = account["role"], account["id"]
 
     convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not convo:
@@ -607,8 +614,7 @@ async def api_unblock_conversation_participant(
 @router.delete("/api/conversations/{conversation_id}")
 async def api_delete_conversation(
     conversation_id: int,
-    role: str = Query(..., pattern="^(seeker|employer)$"),
-    user_id: int = Query(...),
+    account: dict = Depends(require_participant_role()),
     db: Session = Depends(get_db),
 ):
     """Hides the whole thread from the requester's own inbox — like
@@ -616,6 +622,7 @@ async def api_delete_conversation(
     touch the other party's copy or actually erase the messages. If new
     activity happens afterwards, the conversation reappears for both
     parties (see _unhide_for_both), rather than staying permanently gone."""
+    role, user_id = account["role"], account["id"]
 
     convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not convo:
@@ -635,13 +642,13 @@ async def api_delete_conversation(
 
 @router.get("/api/conversations")
 async def api_list_conversations(
-    role: str = Query(..., pattern="^(seeker|employer)$"),
-    user_id: int = Query(...),
+    account: dict = Depends(require_participant_role()),
     db: Session = Depends(get_db),
 ):
     """US-42 / US-43: the inbox — one row per contact, most recently
     active conversation first, like a WhatsApp chat list. Threads the
     requester has "deleted" (hidden_for_<role>) are left out."""
+    role, user_id = account["role"], account["id"]
 
     query = db.query(Conversation)
     if role == "seeker":
@@ -675,14 +682,14 @@ async def api_list_conversations(
 @router.get("/api/conversations/{conversation_id}/messages")
 async def api_get_conversation_messages(
     conversation_id: int,
-    role: str = Query(..., pattern="^(seeker|employer)$"),
-    user_id: int = Query(...),
+    account: dict = Depends(require_participant_role()),
     db: Session = Depends(get_db),
 ):
     """Full thread history. Marks the other party's messages as read —
     opening a thread is what clears its unread count, same as any chat app.
     Also used for polling (messages.html re-calls this every few seconds
     while a thread is open) to pick up new incoming messages."""
+    role, user_id = account["role"], account["id"]
 
     convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not convo:
@@ -716,9 +723,8 @@ async def api_get_conversation_messages(
 
 @router.post("/api/conversations/find-or-create")
 async def api_find_or_create_conversation(
-    role: str = Query(..., pattern="^(seeker|employer)$"),
-    user_id: int = Query(...),
     other_id: int = Query(...),
+    account: dict = Depends(require_participant_role()),
     db: Session = Depends(get_db),
 ):
     """Used by the contextual 'Message Employer' / 'Message Seeker' buttons
@@ -726,10 +732,10 @@ async def api_find_or_create_conversation(
     (existing or brand new, still-empty) thread without posting a message
     first."""
 
-    if role == "seeker":
-        seeker_id, employer_id = user_id, other_id
+    if account["role"] == "seeker":
+        seeker_id, employer_id = account["id"], other_id
     else:
-        seeker_id, employer_id = other_id, user_id
+        seeker_id, employer_id = other_id, account["id"]
 
     convo = _get_or_create_conversation(db, seeker_id, employer_id)
     _require_unblocked(convo)

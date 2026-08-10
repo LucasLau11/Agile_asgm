@@ -20,7 +20,6 @@
       <a href="/UI/html/notifications.html">Notifications</a>
       <a href="/UI/html/profile.html">Profile</a>
     </nav>
-    <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
   </div>
 </header>
 
@@ -55,8 +54,6 @@
 
     <form action="/apply" method="POST" enctype="multipart/form-data">
       <input type="hidden" name="job_id" value="{{ job.id }}">
-  
-      <input type="hidden" name="seeker_id" id="seekerIdField" value="{{ seeker_id }}">
 
       <div class="form-group">
         <label>Cover Letter</label>
@@ -78,11 +75,13 @@
 
 <script src="/UI/js/api.js"></script>
 <script>
-  renderDevUserBar("devUserBar");
-  // Keep the hidden field in sync if the user switches seekers on this
-  // page (renderDevUserBar reloads the page on change, so this mainly
-  // guards the very first render before any reload).
-  document.getElementById("seekerIdField").value = getCurrentSeekerId();
+  async function init() {
+    const account = await requireLogin("seeker");
+    if (!account) return;
+    renderAccountBar("devUserBar", account);
+  }
+
+  init();
 </script>
 
 </body>

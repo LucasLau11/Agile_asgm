@@ -19,7 +19,6 @@
       <a href="/UI/html/notifications.html">Notifications</a>
       <a href="/UI/html/profile.html">Profile</a>
     </nav>
-    <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
   </div>
 </header>
 
@@ -38,39 +37,6 @@
 
   <script src="../js/api.js"></script>
   <script>
-    const seekerId = (typeof getCurrentSeekerId === "function") ? getCurrentSeekerId() : 1;
-    if (typeof renderDevUserBar === "function") {
-      renderDevUserBar("devUserBar");
-    } else {
-      document.getElementById("devUserBar").innerHTML = `
-        Acting as: Seeker #${seekerId} — Aisha
-        <span style="opacity:0.75">(login stand-in for Sprint 1)</span>
-      `;
-    }
-
-    // Fallbacks in case api.js on the server doesn't have these yet —
-    // keeps this page working even if that file is out of sync.
-    if (typeof deleteNotification !== "function") {
-      window.deleteNotification = function (notificationId, role, userId) {
-        return fetch(`/api/notifications/${notificationId}?role=${role}&user_id=${userId}`, {
-          method: "DELETE",
-        }).then((res) => {
-          if (!res.ok) throw new Error("Failed to remove notification");
-          return res.json();
-        });
-      };
-    }
-    if (typeof clearAllNotifications !== "function") {
-      window.clearAllNotifications = function (role, userId) {
-        return fetch(`/api/notifications?role=${role}&user_id=${userId}`, {
-          method: "DELETE",
-        }).then((res) => {
-          if (!res.ok) throw new Error("Failed to clear notifications");
-          return res.json();
-        });
-      };
-    }
-
     function escapeHtml(str) {
       if (!str) return "";
       return str
@@ -98,9 +64,7 @@
     async function loadNotifications() {
       const listEl = document.getElementById("notificationList");
       try {
-        const response = await fetch(`/api/notifications?seeker_id=${seekerId}`);
-        if (!response.ok) throw new Error("Failed to pull database entries");
-        const notifications = await response.json();
+        const notifications = await fetchNotifications();
 
         if (notifications.length === 0) {
           listEl.innerHTML = `<div class="empty-state">You don't have any notifications yet.</div>`;
@@ -121,13 +85,13 @@
 
 
 
-        function wireRemoveButtons() {
+    function wireRemoveButtons() {
       document.querySelectorAll(".remove-notification-btn").forEach((btn) => {
         btn.addEventListener("click", async () => {
           const id = Number(btn.dataset.id);
           btn.disabled = true;
           try {
-            await deleteNotification(id, "seeker", seekerId);
+            await deleteNotification(id);
             await loadNotifications();
           } catch (err) {
             alert(`Couldn't remove notification: ${err.message}`);
@@ -140,14 +104,21 @@
     document.getElementById("clearAllBtn").addEventListener("click", async () => {
       if (!confirm("Remove all notifications? This can't be undone.")) return;
       try {
-        await clearAllNotifications("seeker", seekerId);
+        await clearAllNotifications();
         await loadNotifications();
       } catch (err) {
         alert(`Couldn't clear notifications: ${err.message}`);
       }
-    });   
+    });
 
-    document.addEventListener("DOMContentLoaded", loadNotifications);
+    async function init() {
+      const account = await requireLogin("seeker");
+      if (!account) return;
+      renderAccountBar("devUserBar", account);
+      await loadNotifications();
+    }
+
+    init();
   </script>
 </body>
 </html>

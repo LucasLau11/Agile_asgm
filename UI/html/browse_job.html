@@ -17,7 +17,6 @@
       <a href="/UI/html/notifications.html">Notifications</a>
       <a href="/UI/html/profile.html">Profile</a>
     </nav>
-    <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
   </div>
 </header>
   <div class="dev-user-bar" id="devUserBar"></div>
@@ -79,7 +78,7 @@
   <script src="../js/api.js"></script>
   <script>
     renderDevUserBar("devUserBar");
-    const seekerId = getCurrentSeekerId();
+    let seekerId = null;
 
     // Populate the state and job type dropdowns from the shared constants in api.js
     const stateSelect = document.getElementById("stateInput");
@@ -205,8 +204,19 @@
       loadJobs(currentFilters());
     });
 
-    loadJobs(currentFilters());
-    loadRecommended();
+    async function init() {
+      let account = null;
+      try {
+        account = await getCurrentAccount();
+      } catch (err) {
+        console.warn("Couldn't resolve session, browsing anonymously:", err.message);
+      }
+      seekerId = account && account.role === "seeker" ? account.id : null;
+      loadJobs(currentFilters());
+      loadRecommended();
+    }
+
+    init();
   </script>
 </body>
 </html>

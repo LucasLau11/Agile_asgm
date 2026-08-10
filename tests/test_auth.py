@@ -254,3 +254,45 @@ def test_seeded_style_account_can_log_in(client, db_session):
     body = res.json()
     assert body["role"] == "seeker"
     assert body["display_name"] == "Aisha Rahman"
+
+
+from fastapi import HTTPException
+import pytest
+
+from job_portal.routes.auth import get_current_account_optional, require_role
+from job_portal.services.auth import create_session
+
+
+def test_get_current_account_optional_no_session_returns_none(db_session):
+    result = get_current_account_optional(session_token=None, db=db_session)
+    assert result is None
+
+
+def test_get_current_account_optional_invalid_session_returns_none(db_session):
+    result = get_current_account_optional(session_token="not-a-real-token", db=db_session)
+    assert result is None
+
+
+def test_get_current_account_optional_valid_session_returns_account(db_session):
+    token = create_session(db_session, "seeker", 7)
+    result = get_current_account_optional(session_token=token, db=db_session)
+    assert result == {"role": "seeker", "id": 7}
+
+
+def test_require_role_returns_id_for_matching_role():
+    dependency = require_role("seeker")
+    assert dependency(account={"role": "seeker", "id": 3}) == 3
+
+
+def test_require_role_rejects_wrong_role():
+    dependency = require_role("seeker")
+    with pytest.raises(HTTPException) as exc_info:
+        dependency(account={"role": "employer", "id": 3})
+    assert exc_info.value.status_code == 401
+
+
+def test_require_role_uses_custom_message():
+    dependency = require_role("seeker", "Must be logged in as a job seeker.")
+    with pytest.raises(HTTPException) as exc_info:
+        dependency(account={"role": "admin", "id": 1})
+    assert exc_info.value.detail == "Must be logged in as a job seeker."

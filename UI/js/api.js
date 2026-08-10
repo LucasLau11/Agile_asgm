@@ -172,7 +172,7 @@ function renderDevEmployerBar(containerId) {
 }
 
 async function apiFetch(path, options = {}) {
-  const res = await fetch(`${API_BASE}${path}`, options);
+  const res = await fetch(`${API_BASE}${path}`, { credentials: "include", ...options });
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -217,55 +217,56 @@ function fetchJob(jobId, seekerId) {
   return apiFetch(`/api/jobs/${jobId}${query}`);
 }
 
-function fetchSeekerProfile(seekerId) {
-  return apiFetch(`/api/seekers/${seekerId}`);
+function fetchSeekerProfile() {
+  return apiFetch(`/api/seekers/me`);
 }
 
-function updateProfileInfo(seekerId, info) {
-  return apiFetch(`/api/seekers/${seekerId}`, {
+function updateProfileInfo(info) {
+  return apiFetch(`/api/seekers/me`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(info),
   });
 }
 
-function updateSeekerSkills(seekerId, skills) {
-  return apiFetch(`/api/seekers/${seekerId}/skills`, {
+function updateSeekerSkills(skills) {
+  return apiFetch(`/api/seekers/me/skills`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ skills }),
   });
 }
 
-function addExperience(seekerId, entry) {
-  return apiFetch(`/api/seekers/${seekerId}/experience`, {
+function addExperience(entry) {
+  return apiFetch(`/api/seekers/me/experience`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(entry),
   });
 }
 
-function deleteExperience(seekerId, experienceId) {
-  return apiFetch(`/api/seekers/${seekerId}/experience/${experienceId}`, { method: "DELETE" });
+function deleteExperience(experienceId) {
+  return apiFetch(`/api/seekers/me/experience/${experienceId}`, { method: "DELETE" });
 }
 
-function addEducation(seekerId, entry) {
-  return apiFetch(`/api/seekers/${seekerId}/education`, {
+function addEducation(entry) {
+  return apiFetch(`/api/seekers/me/education`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(entry),
   });
 }
 
-function deleteEducation(seekerId, educationId) {
-  return apiFetch(`/api/seekers/${seekerId}/education/${educationId}`, { method: "DELETE" });
+function deleteEducation(educationId) {
+  return apiFetch(`/api/seekers/me/education/${educationId}`, { method: "DELETE" });
 }
 
-async function uploadResume(seekerId, file) {
+async function uploadResume(file) {
   const formData = new FormData();
   formData.append("file", file);
-  const res = await fetch(`${API_BASE}/api/seekers/${seekerId}/resume`, {
+  const res = await fetch(`${API_BASE}/api/seekers/me/resume`, {
     method: "POST",
+    credentials: "include",
     body: formData,
   });
   if (!res.ok) {
@@ -278,52 +279,129 @@ async function uploadResume(seekerId, file) {
   return res.json();
 }
 
-function scanResume(seekerId) {
-  return apiFetch(`/api/seekers/${seekerId}/resume/parse`);
+function scanResume() {
+  return apiFetch(`/api/seekers/me/resume/parse`);
+}
+
+// ---------------------------------------------------------------------------
+// Employer company profile (employer_profile.html) — US-05
+// ---------------------------------------------------------------------------
+
+function fetchEmployerProfile() {
+  return apiFetch(`/api/employers/me`);
+}
+
+function updateEmployerProfile(info) {
+  return apiFetch(`/api/employers/me`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(info),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Admin moderation (admin_dashboard.html) — US-07/08/09
+// ---------------------------------------------------------------------------
+
+function fetchAdminSeekers() {
+  return apiFetch(`/api/admin/seekers`);
+}
+
+function fetchAdminEmployers() {
+  return apiFetch(`/api/admin/employers`);
+}
+
+function deleteSeekerAccount(seekerId) {
+  return apiFetch(`/api/admin/seekers/${seekerId}`, { method: "DELETE" });
+}
+
+function deleteEmployerAccount(employerId) {
+  return apiFetch(`/api/admin/employers/${employerId}`, { method: "DELETE" });
+}
+
+function suspendSeekerAccount(seekerId) {
+  return apiFetch(`/api/admin/seekers/${seekerId}/suspend`, { method: "POST" });
+}
+
+function unsuspendSeekerAccount(seekerId) {
+  return apiFetch(`/api/admin/seekers/${seekerId}/unsuspend`, { method: "POST" });
+}
+
+function suspendEmployerAccount(employerId) {
+  return apiFetch(`/api/admin/employers/${employerId}/suspend`, { method: "POST" });
+}
+
+function unsuspendEmployerAccount(employerId) {
+  return apiFetch(`/api/admin/employers/${employerId}/unsuspend`, { method: "POST" });
+}
+
+function fetchUserApplications() {
+  return apiFetch(`/api/applications`);
 }
 
 // ---------------------------------------------------------------------------
 // Employer job management (job_management.html)
 // ---------------------------------------------------------------------------
 
-function fetchEmployerJobs(employerId, { keyword = "", status = "" } = {}) {
-  const params = new URLSearchParams({ employer_id: employerId });
+function fetchEmployerJobs({ keyword = "", status = "" } = {}) {
+  const params = new URLSearchParams();
   if (keyword) params.set("keyword", keyword);
   if (status && status !== "all") params.set("status", status);
-  return apiFetch(`/api/employer/jobs?${params.toString()}`);
+  const query = params.toString();
+  return apiFetch(`/api/employer/jobs${query ? `?${query}` : ""}`);
 }
 
-function createEmployerJob(employerId, payload) {
-  return apiFetch(`/api/employer/jobs?employer_id=${employerId}`, {
+function createEmployerJob(payload) {
+  return apiFetch(`/api/employer/jobs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }
 
-function updateEmployerJob(employerId, jobId, payload) {
-  return apiFetch(`/api/employer/jobs/${jobId}?employer_id=${employerId}`, {
+function updateEmployerJob(jobId, payload) {
+  return apiFetch(`/api/employer/jobs/${jobId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }
 
-function publishEmployerJob(employerId, jobId) {
-  return apiFetch(`/api/employer/jobs/${jobId}/publish?employer_id=${employerId}`, {
+function publishEmployerJob(jobId) {
+  return apiFetch(`/api/employer/jobs/${jobId}/publish`, {
     method: "POST",
   });
 }
 
-function closeEmployerJob(employerId, jobId) {
-  return apiFetch(`/api/employer/jobs/${jobId}/close?employer_id=${employerId}`, {
+function closeEmployerJob(jobId) {
+  return apiFetch(`/api/employer/jobs/${jobId}/close`, {
     method: "POST",
   });
 }
 
-function deleteEmployerJob(employerId, jobId) {
-  return apiFetch(`/api/employer/jobs/${jobId}?employer_id=${employerId}`, {
+function deleteEmployerJob(jobId) {
+  return apiFetch(`/api/employer/jobs/${jobId}`, {
     method: "DELETE",
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Employer applicant management (employer_applications.html, applicant_detail.html)
+// ---------------------------------------------------------------------------
+
+function fetchEmployerApplications() {
+  return apiFetch(`/api/employer/applications`);
+}
+
+function fetchApplicantDetail(applicantId) {
+  return apiFetch(`/api/employer/applicant/${applicantId}`);
+}
+
+function updateApplicantStage(applicantId, payload) {
+  return apiFetch(`/api/employer/applicant/${applicantId}/update`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
 }
 
@@ -331,14 +409,18 @@ function deleteEmployerJob(employerId, jobId) {
 // Notifications (notifications.html, employer_notifications.html)
 // ---------------------------------------------------------------------------
 
-function deleteNotification(notificationId, role, userId) {
-  return apiFetch(`/api/notifications/${notificationId}?role=${role}&user_id=${userId}`, {
+function fetchNotifications() {
+  return apiFetch(`/api/notifications`);
+}
+
+function deleteNotification(notificationId) {
+  return apiFetch(`/api/notifications/${notificationId}`, {
     method: "DELETE",
   });
 }
 
-function clearAllNotifications(role, userId) {
-  return apiFetch(`/api/notifications?role=${role}&user_id=${userId}`, {
+function clearAllNotifications() {
+  return apiFetch(`/api/notifications`, {
     method: "DELETE",
   });
 }
@@ -363,7 +445,7 @@ function trustSealHtml(score, reasons) {
 function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str ?? "";
-  return div.innerHTML;
+  return div.innerHTML.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 // ---------------------------------------------------------------------------
@@ -428,6 +510,18 @@ async function requireLogin(role) {
   return account;
 }
 
+/** Like requireLogin(role), but for pages usable by EITHER seeker or
+ * employer (currently only messages.html, the one page in this app that
+ * intentionally serves both roles from a single file). */
+async function requireLoginAnyRole(roles) {
+  const account = await getCurrentAccount();
+  if (!account || !roles.includes(account.role)) {
+    window.location.href = "/UI/html/login.html";
+    return null;
+  }
+  return account;
+}
+
 /** Populates the given container (typically the existing .dev-user-bar div)
  * with the account's display name and a working Log out button. Takes the
  * already-fetched account object (from the page's own requireLogin() call)
@@ -468,16 +562,16 @@ function setButtonBusy(button, busy, busyLabel) {
 // buttons on job_detail.html / applicant_detail.html). US-40 to US-43.
 // ---------------------------------------------------------------------------
 
-function fetchConversations(role, userId) {
-  return apiFetch(`/api/conversations?role=${role}&user_id=${userId}`);
+function fetchConversations() {
+  return apiFetch(`/api/conversations`);
 }
 
-function fetchConversationMessages(conversationId, role, userId) {
-  return apiFetch(`/api/conversations/${conversationId}/messages?role=${role}&user_id=${userId}`);
+function fetchConversationMessages(conversationId) {
+  return apiFetch(`/api/conversations/${conversationId}/messages`);
 }
 
-function sendMessage({ senderRole, senderId, recipientId, body, jobId = null }) {
-  const payload = { sender_role: senderRole, sender_id: senderId, recipient_id: recipientId, body };
+function sendMessage({ recipientId, body, jobId = null }) {
+  const payload = { recipient_id: recipientId, body };
   if (jobId != null) payload.job_id = jobId;
   return apiFetch(`/api/messages`, {
     method: "POST",
@@ -488,16 +582,14 @@ function sendMessage({ senderRole, senderId, recipientId, body, jobId = null }) 
 
 /** Sends a message with an image/file attachment (US messaging enhancement).
  * Caption is optional — a bare attachment is a valid message. */
-async function sendMessageWithAttachment({ senderRole, senderId, recipientId, body = "", jobId = null, file }) {
+async function sendMessageWithAttachment({ recipientId, body = "", jobId = null, file }) {
   const form = new FormData();
-  form.append("sender_role", senderRole);
-  form.append("sender_id", senderId);
   form.append("recipient_id", recipientId);
   form.append("body", body);
   if (jobId != null) form.append("job_id", jobId);
   form.append("file", file);
 
-  const res = await fetch(`/api/messages/attachment`, { method: "POST", body: form });
+  const res = await fetch(`/api/messages/attachment`, { method: "POST", credentials: "include", body: form });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `Request failed (${res.status})`);
@@ -506,8 +598,8 @@ async function sendMessageWithAttachment({ senderRole, senderId, recipientId, bo
 }
 
 /** Edit a message's text — sender-only, time-limited window (enforced server-side). */
-function editMessage(messageId, role, userId, body) {
-  return apiFetch(`/api/messages/${messageId}?role=${role}&user_id=${userId}`, {
+function editMessage(messageId, body) {
+  return apiFetch(`/api/messages/${messageId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ body }),
@@ -516,23 +608,22 @@ function editMessage(messageId, role, userId, body) {
 
 /** Delete a message. scope="me" hides it just for the requester;
  * scope="everyone" is sender-only and replaces it with a placeholder for both. */
-function deleteMessage(messageId, role, userId, scope) {
-  return apiFetch(`/api/messages/${messageId}?role=${role}&user_id=${userId}&scope=${scope}`, {
+function deleteMessage(messageId, scope) {
+  return apiFetch(`/api/messages/${messageId}?scope=${scope}`, {
     method: "DELETE",
   });
 }
 
 /** Used by the contextual "Message Employer" / "Message Seeker" buttons. */
-function findOrCreateConversation(role, userId, otherId) {
-  const params = new URLSearchParams({ role, user_id: userId, other_id: otherId });
-  return apiFetch(`/api/conversations/find-or-create?${params.toString()}`, { method: "POST" });
+function findOrCreateConversation(otherId) {
+  return apiFetch(`/api/conversations/find-or-create?other_id=${otherId}`, { method: "POST" });
 }
 
 /** Hides a whole thread from the requester's own inbox (like WhatsApp's
  * "Delete chat") — the other party's copy is unaffected, and the thread
  * reappears for both if there's new activity afterwards. */
-function deleteConversation(conversationId, role, userId) {
-  return apiFetch(`/api/conversations/${conversationId}?role=${role}&user_id=${userId}`, {
+function deleteConversation(conversationId) {
+  return apiFetch(`/api/conversations/${conversationId}`, {
     method: "DELETE",
   });
 }
@@ -542,8 +633,8 @@ function deleteConversation(conversationId, role, userId) {
 /** US-46: employer sends a structured interview invite (date/time,
  * duration, mode, location/link, notes) instead of a plain text message.
  * details = { scheduled_at (ISO string), duration_minutes, mode, location_or_link, notes } */
-function sendInterviewInvite(employerId, seekerId, jobId, details) {
-  const params = new URLSearchParams({ employer_id: employerId, seeker_id: seekerId });
+function sendInterviewInvite(seekerId, jobId, details) {
+  const params = new URLSearchParams({ seeker_id: seekerId });
   if (jobId != null) params.set("job_id", jobId);
   return apiFetch(`/api/messages/interview-invite?${params.toString()}`, {
     method: "POST",
@@ -553,8 +644,8 @@ function sendInterviewInvite(employerId, seekerId, jobId, details) {
 }
 
 /** US-47: seeker accepts or declines. response must be "accepted" or "declined". */
-function respondToInterview(messageId, userId, response) {
-  return apiFetch(`/api/messages/${messageId}/interview-response?user_id=${userId}`, {
+function respondToInterview(messageId, response) {
+  return apiFetch(`/api/messages/${messageId}/interview-response`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ response }),
@@ -563,8 +654,8 @@ function respondToInterview(messageId, userId, response) {
 
 /** US-XX: employer reschedules an interview they sent — same shape as
  * sendInterviewInvite's details. Resets status to "pending" server-side. */
-function rescheduleInterview(messageId, employerId, details) {
-  return apiFetch(`/api/messages/${messageId}/interview-reschedule?employer_id=${employerId}`, {
+function rescheduleInterview(messageId, details) {
+  return apiFetch(`/api/messages/${messageId}/interview-reschedule`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(details),
@@ -572,18 +663,10 @@ function rescheduleInterview(messageId, employerId, details) {
 }
 
 /** US-XX: employer cancels an interview they sent. */
-function cancelInterview(messageId, employerId) {
-  return apiFetch(`/api/messages/${messageId}/interview-cancel?employer_id=${employerId}`, {
+function cancelInterview(messageId) {
+  return apiFetch(`/api/messages/${messageId}/interview-cancel`, {
     method: "POST",
   });
-}
-
-/** Builds an authenticated URL for an encrypted attachment — the backend
- * decrypts on the fly and checks conversation membership, so role/user_id
- * have to travel with every request for it (see routes/messages.py). */
-function attachmentUrlFor(baseUrl, role, userId) {
-  if (!baseUrl) return "";
-  return `${baseUrl}?role=${role}&user_id=${userId}`;
 }
 
 /** Rough "x minutes/hours ago" formatting — used in the conversation list preview. */
@@ -662,14 +745,14 @@ if (typeof document !== "undefined") {
 
 /** Blocks the other participant. Blocking is enforced by the API for both
  * directions, so it also applies to messages sent from contextual pages. */
-function blockConversation(conversationId, role, userId) {
-  return apiFetch(`/api/conversations/${conversationId}/block?role=${role}&user_id=${userId}`, {
+function blockConversation(conversationId) {
+  return apiFetch(`/api/conversations/${conversationId}/block`, {
     method: "POST",
   });
 }
 
-function unblockConversation(conversationId, role, userId) {
-  return apiFetch(`/api/conversations/${conversationId}/block?role=${role}&user_id=${userId}`, {
+function unblockConversation(conversationId) {
+  return apiFetch(`/api/conversations/${conversationId}/block`, {
     method: "DELETE",
   });
 }

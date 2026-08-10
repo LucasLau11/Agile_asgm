@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Company Profile</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/application.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Job Portal</div>
+    <div class="topbar-right">
+      <nav>
+        <a href="/UI/html/job_management.html">My Postings</a>
+        <a href="/UI/html/employer_applications.html">Applications</a>
+        <a href="/UI/html/messages.html?role=employer">Messages</a>
+        <a href="/UI/html/employer_notifications.html">Notifications</a>
+        <a href="/UI/html/employer_profile.html">Company Profile</a>
+      </nav>
+    </div>
+  </header>
+  <div class="dev-user-bar" id="devUserBar"></div>
+
+  <main class="page">
+    <h1>Company profile</h1>
+    <p class="subtitle">Keep your company details up to date so job seekers get an accurate picture of you.</p>
+
+    <section class="profile-section">
+      <div class="section-header-row">
+        <h2>Company info</h2>
+        <button type="button" class="btn-link" id="editInfoBtn">Edit</button>
+      </div>
+      <div id="infoDisplay"></div>
+      <form id="infoForm" style="display:none;" novalidate>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="companyNameInput">Company name *</label>
+          <input type="text" id="companyNameInput" placeholder="e.g. Acme Corporation" required />
+          <div class="field-error" id="companyNameError"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="industryInput">Industry</label>
+            <input type="text" id="industryInput" placeholder="e.g. Technology" />
+          </div>
+          <div class="form-field">
+            <label for="websiteInput">Website</label>
+            <input type="text" id="websiteInput" placeholder="e.g. https://acme.example.com" />
+          </div>
+        </div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="descriptionInput">Description</label>
+          <textarea id="descriptionInput" rows="4" placeholder="What does your company do?"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" class="btn btn-secondary" id="cancelInfoBtn">Cancel</button>
+      </form>
+      <p class="status-msg" id="infoStatus"></p>
+    </section>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script>
+    let profileData = null;
+    let account = null;
+
+    async function init() {
+      account = await requireLogin("employer");
+      if (!account) return;
+      renderAccountBar("devUserBar", account);
+      await loadProfile();
+    }
+
+    function renderInfoDisplay() {
+      const el = document.getElementById("infoDisplay");
+      el.innerHTML = `
+        <div class="info-name">${escapeHtml(profileData.company_name)}</div>
+        <div class="info-contact">
+          ${profileData.industry ? `<span>${escapeHtml(profileData.industry)}</span>` : `<span style="color:var(--ink-soft);">Industry not specified</span>`}
+          ${profileData.website ? `<span>${escapeHtml(profileData.website)}</span>` : `<span style="color:var(--ink-soft);">Website not specified</span>`}
+        </div>
+        ${profileData.description ? `<p class="info-bio">${escapeHtml(profileData.description)}</p>` : `<p class="subtitle" style="font-size:0.88rem;">No description added yet. Click "Edit" to add one.</p>`}
+      `;
+    }
+
+    document.getElementById("editInfoBtn").addEventListener("click", () => {
+      document.getElementById("companyNameInput").value = profileData.company_name || "";
+      document.getElementById("industryInput").value = profileData.industry || "";
+      document.getElementById("websiteInput").value = profileData.website || "";
+      document.getElementById("descriptionInput").value = profileData.description || "";
+      document.getElementById("companyNameError").textContent = "";
+      document.getElementById("infoDisplay").style.display = "none";
+      document.getElementById("infoForm").style.display = "block";
+      document.getElementById("editInfoBtn").style.display = "none";
+    });
+
+    document.getElementById("cancelInfoBtn").addEventListener("click", () => {
+      document.getElementById("infoForm").style.display = "none";
+      document.getElementById("infoDisplay").style.display = "block";
+      document.getElementById("editInfoBtn").style.display = "inline";
+    });
+
+    document.getElementById("infoForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const statusEl = document.getElementById("infoStatus");
+      const nameError = document.getElementById("companyNameError");
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      statusEl.textContent = "";
+      nameError.textContent = "";
+
+      const companyName = document.getElementById("companyNameInput").value.trim();
+      if (!companyName) {
+        nameError.textContent = "Company name is required.";
+        return;
+      }
+
+      setButtonBusy(submitBtn, true, "Saving…");
+      try {
+        profileData = await updateEmployerProfile({
+          company_name: companyName,
+          industry: document.getElementById("industryInput").value.trim() || null,
+          website: document.getElementById("websiteInput").value.trim() || null,
+          description: document.getElementById("descriptionInput").value.trim() || null,
+        });
+        renderInfoDisplay();
+        document.getElementById("infoForm").style.display = "none";
+        document.getElementById("infoDisplay").style.display = "block";
+        document.getElementById("editInfoBtn").style.display = "inline";
+        statusEl.textContent = "Saved.";
+        statusEl.className = "status-msg success";
+      } catch (err) {
+        statusEl.textContent = `Couldn't save: ${err.message}`;
+        statusEl.className = "status-msg error";
+      } finally {
+        setButtonBusy(submitBtn, false);
+      }
+    });
+
+    async function loadProfile() {
+      try {
+        profileData = await fetchEmployerProfile();
+        renderInfoDisplay();
+      } catch (err) {
+        document.getElementById("infoStatus").textContent = `Couldn't load profile: ${err.message}`;
+        document.getElementById("infoStatus").className = "status-msg error";
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

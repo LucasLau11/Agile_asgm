@@ -9,9 +9,8 @@ Covers:
   US-31  Specify skill requirements when creating a job posting
   US-32  Update skill requirements
 
-No login system yet (that's Sprint 3), so every endpoint takes an
-`employer_id` query param defaulting to 1 — same stand-in pattern
-Teammate C already used for `seeker_id`/`employer_id` in applications.py.
+Every endpoint requires a real employer session via Depends(require_role("employer", ...)).
+The employer_id is resolved from the session cookie and is never a client-suppliable value.
 
 Status values on Job.status stay "draft" / "open" / "closed". See the note
 at the top of the employer section in schemas.py for why "open" is kept
@@ -22,12 +21,13 @@ them would silently break their endpoint).
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from job_portal.database import get_db
-from job_portal.models import Job
+from job_portal.models import Application, Job, Notification
+from job_portal.routes.auth import require_role
 from job_portal.schemas import EmployerJobOut, JobCreate, JobUpdate
 from job_portal.services.credibility import compute_credibility_score
 
@@ -75,9 +75,9 @@ def _check_duplicate_title(
 
 @router.get("/jobs", response_model=List[EmployerJobOut])
 def list_employer_jobs(
-    employer_id: int = Query(1),
     keyword: Optional[str] = None,
     status: Optional[str] = None,
+    employer_id: int = Depends(require_role("employer", "Must be logged in as an employer.")),
     db: Session = Depends(get_db),
 ) -> List[EmployerJobOut]:
     """
@@ -103,7 +103,9 @@ def list_employer_jobs(
 
 @router.get("/jobs/{job_id}", response_model=EmployerJobOut)
 def get_employer_job(
-    job_id: int, employer_id: int = Query(1), db: Session = Depends(get_db)
+    job_id: int,
+    employer_id: int = Depends(require_role("employer", "Must be logged in as an employer.")),
+    db: Session = Depends(get_db),
 ) -> EmployerJobOut:
     job = _find_job_or_404(db, employer_id, job_id)
     return EmployerJobOut.from_job(job, credibility_score=compute_credibility_score(job, db))
@@ -116,7 +118,9 @@ def get_employer_job(
 
 @router.post("/jobs", response_model=EmployerJobOut, status_code=201)
 def create_job(
-    payload: JobCreate, employer_id: int = Query(1), db: Session = Depends(get_db)
+    payload: JobCreate,
+    employer_id: int = Depends(require_role("employer", "Must be logged in as an employer.")),
+    db: Session = Depends(get_db),
 ) -> EmployerJobOut:
     _check_duplicate_title(db, employer_id, payload.title)
 
@@ -148,7 +152,7 @@ def create_job(
 def update_job(
     job_id: int,
     payload: JobUpdate,
-    employer_id: int = Query(1),
+    employer_id: int = Depends(require_role("employer", "Must be logged in as an employer.")),
     db: Session = Depends(get_db),
 ) -> EmployerJobOut:
     job = _find_job_or_404(db, employer_id, job_id)
@@ -176,7 +180,9 @@ def update_job(
 
 @router.post("/jobs/{job_id}/publish", response_model=EmployerJobOut)
 def publish_job(
-    job_id: int, employer_id: int = Query(1), db: Session = Depends(get_db)
+    job_id: int,
+    employer_id: int = Depends(require_role("employer", "Must be logged in as an employer.")),
+    db: Session = Depends(get_db),
 ) -> EmployerJobOut:
     """Draft -> open. Seekers can now see and apply to this posting."""
     job = _find_job_or_404(db, employer_id, job_id)
@@ -188,7 +194,9 @@ def publish_job(
 
 @router.post("/jobs/{job_id}/close", response_model=EmployerJobOut)
 def close_job(
-    job_id: int, employer_id: int = Query(1), db: Session = Depends(get_db)
+    job_id: int,
+    employer_id: int = Depends(require_role("employer", "Must be logged in as an employer.")),
+    db: Session = Depends(get_db),
 ) -> EmployerJobOut:
     """Open -> closed. Stops accepting new applications."""
     job = _find_job_or_404(db, employer_id, job_id)
@@ -205,19 +213,37 @@ def close_job(
 
 @router.delete("/jobs/{job_id}", status_code=204)
 def delete_job(
-    job_id: int, employer_id: int = Query(1), db: Session = Depends(get_db)
+    job_id: int,
+    employer_id: int = Depends(require_role("employer", "Must be logged in as an employer.")),
+    db: Session = Depends(get_db),
 ) -> None:
     """
     Deletes a posting regardless of status (draft, open, or closed) — the
     frontend now shows Delete on drafts too, this just matches that on the
     backend.
 
-    Note: existing Application rows pointing at this job_id are NOT deleted
-    or blocked here — SQLite doesn't enforce foreign keys by default in this
-    project, so they'll simply be orphaned (job_id stays but no longer
-    resolves to a Job). Worth flagging to Teammate C if that matters for
-    the applications list rendering.
+    Application rows referencing this job_id are genuinely deleted, not
+    orphaned — Job.id is a bare SQLite rowid and gets reissued to the next
+    job created anywhere on the platform, so an orphaned Application would
+    silently be re-adopted by a completely different employer's job. This
+    is exploitable in practice: routes/applications.py's applicant-detail
+    and stage-update endpoints join through Job.employer_id for ownership
+    scoping, so a reused job id would hand the new owner the deleted
+    applicant's name/email/cover letter and let them mutate the pipeline
+    stage. Notification rows tied to those applications are cleaned up
+    too. Mirrors routes/admin.py's delete_employer, which already applies
+    this same reasoning to a deleted employer's jobs.
     """
     job = _find_job_or_404(db, employer_id, job_id)
+
+    application_ids = [
+        a.id for a in db.query(Application).filter(Application.job_id == job_id).all()
+    ]
+    if application_ids:
+        db.query(Notification).filter(
+            Notification.application_id.in_(application_ids)
+        ).delete(synchronize_session=False)
+        db.query(Application).filter(Application.job_id == job_id).delete(synchronize_session=False)
+
     db.delete(job)
     db.commit()

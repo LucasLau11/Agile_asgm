@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from job_portal.database import get_db
 from job_portal.models import Education, Job, SeekerProfile, WorkExperience
-from job_portal.routes.auth import get_current_account
+from job_portal.routes.auth import get_current_account_optional, require_role
 from job_portal.schemas import (
     EducationIn,
     EducationOut,
@@ -45,16 +45,6 @@ def _get_or_create_profile(db: Session, seeker_id: int) -> SeekerProfile:
     return profile
 
 
-def _require_seeker(account: dict) -> int:
-    """Every /api/seekers/me* endpoint below calls this first — raises 401
-    if the session isn't a seeker (not logged in at all, or logged in as
-    an employer/admin), otherwise returns the seeker's own id. Centralizes
-    the role check so it can't be forgotten on any individual endpoint."""
-    if account["role"] != "seeker":
-        raise HTTPException(status_code=401, detail="Must be logged in as a job seeker.")
-    return account["id"]
-
-
 # Browse, search, and filter job postings
 @router.get("/api/jobs", response_model=List[JobOut])
 def list_jobs(
@@ -63,15 +53,20 @@ def list_jobs(
     state: Optional[str] = None,
     job_type: Optional[str] = None,
     salary_min: Optional[int] = None,
-    seeker_id: Optional[int] = None,
     sort_by: Optional[str] = None,
+    account: Optional[dict] = Depends(get_current_account_optional),
     db: Session = Depends(get_db),
 ) -> List[JobOut]:
     """
     sort_by: "newest" (default), "salary_high", "salary_low", or "match"
-    ("match" only has an effect when seeker_id is also supplied — otherwise
+    ("match" only has an effect when logged in as a seeker — otherwise
     there's nothing to sort by, so it silently falls back to "newest").
+
+    Stays fully public: browsing never requires login. When a seeker IS
+    logged in, results are personalized with match data automatically —
+    no client-suppliable id is accepted or needed.
     """
+    seeker_id: Optional[int] = account["id"] if account is not None and account["role"] == "seeker" else None
     query = db.query(Job).filter(Job.status == "open")
 
     if keyword:
@@ -129,12 +124,13 @@ def list_jobs(
 
 @router.get("/api/jobs/recommended", response_model=List[JobOut])
 def recommended_jobs(
-    seeker_id: int,
     min_match: int = 1,
     limit: int = 10,
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
     db: Session = Depends(get_db),
 ) -> List[JobOut]:
-    
+    """Recommendations require login — there's no sensible anonymous
+    recommendation, unlike list_jobs/get_job which stay public."""
     profile = db.query(SeekerProfile).filter(SeekerProfile.seeker_id == seeker_id).first()
     seeker_skills = profile.skills_list() if profile else []
     if not seeker_skills:
@@ -161,7 +157,12 @@ def recommended_jobs(
 
 
 @router.get("/api/jobs/{job_id}", response_model=JobOut)
-def get_job(job_id: int, seeker_id: Optional[int] = None, db: Session = Depends(get_db)) -> JobOut:
+def get_job(
+    job_id: int,
+    account: Optional[dict] = Depends(get_current_account_optional),
+    db: Session = Depends(get_db),
+) -> JobOut:
+    seeker_id: Optional[int] = account["id"] if account is not None and account["role"] == "seeker" else None
     job = db.query(Job).filter(Job.id == job_id).first()
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -185,11 +186,11 @@ def get_job(job_id: int, seeker_id: Optional[int] = None, db: Session = Depends(
 
 @router.get("/api/seekers/me", response_model=SeekerProfileOut)
 def get_seeker_profile(
-    account: dict = Depends(get_current_account), db: Session = Depends(get_db)
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
     """Fetch the logged-in seeker's own profile (creates an empty one if
     this is their first visit — registration doesn't pre-populate bio/phone/etc)."""
-    seeker_id = _require_seeker(account)
     profile = _get_or_create_profile(db, seeker_id)
     return SeekerProfileOut.from_profile(profile)
 
@@ -197,12 +198,33 @@ def get_seeker_profile(
 @router.put("/api/seekers/me", response_model=SeekerProfileOut)
 def update_profile_info(
     payload: ProfileInfoUpdate,
-    account: dict = Depends(get_current_account),
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
     db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
-    """Update personal info (name, email, phone, bio) — the 'real profile' fields."""
-    seeker_id = _require_seeker(account)
+    """Update personal info (name, email, phone, bio) — the 'real profile' fields.
+
+    Since `email` doubles as the login identifier (see routes/auth.py), an
+    update that would hand it to a different already-registered account is
+    rejected — otherwise a seeker could lock another user out of their own
+    login just by typing that user's email into their own profile form.
+    """
     profile = _get_or_create_profile(db, seeker_id)
+
+    new_email = payload.email.strip().lower()
+    if new_email != (profile.email or "").strip().lower():
+        from job_portal.models import Admin, Employer
+
+        email_taken = (
+            db.query(SeekerProfile)
+            .filter(SeekerProfile.email == new_email, SeekerProfile.seeker_id != seeker_id)
+            .first()
+            is not None
+            or db.query(Employer).filter(Employer.email == new_email).first() is not None
+            or db.query(Admin).filter(Admin.email == new_email).first() is not None
+        )
+        if email_taken:
+            raise HTTPException(status_code=409, detail="An account with this email already exists.")
+
     profile.full_name = payload.full_name
     profile.email = payload.email
     profile.phone = payload.phone
@@ -215,11 +237,10 @@ def update_profile_info(
 @router.put("/api/seekers/me/skills", response_model=SeekerProfileOut)
 def update_skills(
     payload: SkillsUpdate,
-    account: dict = Depends(get_current_account),
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
     db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
     """US-22: Replace the seeker's skill list so job matching can use it."""
-    seeker_id = _require_seeker(account)
     profile = _get_or_create_profile(db, seeker_id)
     cleaned = [s.strip() for s in payload.skills if s.strip()]
     profile.skills = ",".join(cleaned)
@@ -231,10 +252,9 @@ def update_skills(
 @router.post("/api/seekers/me/experience", response_model=SeekerProfileOut, status_code=201)
 def add_experience(
     payload: ExperienceIn,
-    account: dict = Depends(get_current_account),
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
     db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
-    seeker_id = _require_seeker(account)
     profile = _get_or_create_profile(db, seeker_id)
     entry = WorkExperience(seeker_profile_id=profile.id, **payload.model_dump())
     db.add(entry)
@@ -246,10 +266,9 @@ def add_experience(
 @router.delete("/api/seekers/me/experience/{experience_id}", response_model=SeekerProfileOut)
 def delete_experience(
     experience_id: int,
-    account: dict = Depends(get_current_account),
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
     db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
-    seeker_id = _require_seeker(account)
     profile = _get_or_create_profile(db, seeker_id)
     entry = (
         db.query(WorkExperience)
@@ -268,10 +287,9 @@ def delete_experience(
 @router.post("/api/seekers/me/education", response_model=SeekerProfileOut, status_code=201)
 def add_education(
     payload: EducationIn,
-    account: dict = Depends(get_current_account),
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
     db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
-    seeker_id = _require_seeker(account)
     profile = _get_or_create_profile(db, seeker_id)
     entry = Education(seeker_profile_id=profile.id, **payload.model_dump())
     db.add(entry)
@@ -283,10 +301,9 @@ def add_education(
 @router.delete("/api/seekers/me/education/{education_id}", response_model=SeekerProfileOut)
 def delete_education(
     education_id: int,
-    account: dict = Depends(get_current_account),
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
     db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
-    seeker_id = _require_seeker(account)
     profile = _get_or_create_profile(db, seeker_id)
     entry = (
         db.query(Education)
@@ -305,11 +322,9 @@ def delete_education(
 @router.post("/api/seekers/me/resume", response_model=SeekerProfileOut, status_code=201)
 async def upload_resume(
     file: UploadFile = File(...),
-    account: dict = Depends(get_current_account),
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
     db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
-    seeker_id = _require_seeker(account)
-
     contents = await file.read()
 
     if len(contents) > MAX_RESUME_SIZE_BYTES:
@@ -340,7 +355,8 @@ async def upload_resume(
 
 @router.get("/api/seekers/me/resume/parse", response_model=ParsedResumeOut)
 def parse_seeker_resume(
-    account: dict = Depends(get_current_account), db: Session = Depends(get_db)
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
 ) -> ParsedResumeOut:
     """
     Scan the logged-in seeker's already-uploaded resume and extract
@@ -348,7 +364,6 @@ def parse_seeker_resume(
     text extraction + pattern matching (see services/resume_parser.py for
     the full approach and its honest limitations).
     """
-    seeker_id = _require_seeker(account)
     profile = db.query(SeekerProfile).filter(SeekerProfile.seeker_id == seeker_id).first()
     if profile is None or not profile.resume_url:
         raise HTTPException(status_code=404, detail="No resume uploaded yet for this seeker.")

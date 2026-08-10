@@ -91,18 +91,6 @@ a { color: inherit; }
   flex-wrap: wrap;
 }
 
-.role-switch {
-  background: var(--paper);
-  color: var(--ink);
-  text-decoration: none;
-  font-size: 0.85rem;
-  font-weight: 600;
-  padding: 6px 16px;
-  border-radius: 999px;
-  opacity: 1;
-  white-space: nowrap;
-}
-.role-switch:hover { background: var(--gold); color: var(--paper); }
 /* ---------- Test-user selector (Sprint 1 stand-in for login) ---------- */
 
 .dev-user-bar {

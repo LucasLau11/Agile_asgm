@@ -493,6 +493,37 @@ class EmployerRegisterIn(BaseModel):
         return value
 
 
+class EmployerProfileOut(BaseModel):
+    """Response shape for GET/PUT /api/employers/me."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_name: str
+    email: str
+    description: Optional[str] = None
+    industry: Optional[str] = None
+    website: Optional[str] = None
+
+
+class EmployerProfileUpdate(BaseModel):
+    """Body for PUT /api/employers/me. Email is not editable here — it's
+    the login identifier and changing it is out of this story's scope."""
+
+    company_name: str = Field(..., min_length=1, max_length=150)
+    description: Optional[str] = Field(None, max_length=2000)
+    industry: Optional[str] = Field(None, max_length=100)
+    website: Optional[str] = Field(None, max_length=200)
+
+    @field_validator("company_name")
+    @classmethod
+    def _company_name_not_blank(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("Company name is required.")
+        return value
+
+
 class LoginIn(BaseModel):
     """Body for POST /api/auth/login."""
 
@@ -541,15 +572,15 @@ def _validate_message_body(value: str) -> str:
 class MessageCreate(BaseModel):
     """Body for POST /api/messages.
 
-    sender_role/sender_id identify who's sending (matches the "acting as"
-    dev-user pattern used elsewhere — real auth arrives Sprint 3).
-    recipient_id is the id of the other party, whose role is the opposite
-    of sender_role. job_id is optional: a message can reference a specific
-    job posting ("regarding this job") or be a general enquiry.
+    sender_role/sender_id used to be client-suppliable here (a "acting as"
+    dev-user stand-in) — now identity comes only from the session
+    (Depends(require_participant_role())), so only the target and content
+    remain client-suppliable. recipient_id is the id of the other party,
+    whose role is the opposite of the logged-in sender's role. job_id is
+    optional: a message can reference a specific job posting ("regarding
+    this job") or be a general enquiry.
     """
 
-    sender_role: str = Field(..., pattern="^(seeker|employer)$")
-    sender_id: int
     recipient_id: int
     body: str = Field(..., min_length=1, max_length=4000)
     job_id: Optional[int] = None
@@ -665,6 +696,28 @@ class ConversationOut(BaseModel):
     unread_count: int = 0
     is_blocked: bool = False
     blocked_by_me: bool = False
+
+
+class AdminSeekerOut(BaseModel):
+    """Row shape for GET /api/admin/seekers."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    seeker_id: int
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    status: str
+
+
+class AdminEmployerOut(BaseModel):
+    """Row shape for GET /api/admin/employers."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_name: str
+    email: str
+    status: str
 
 
 class ParsedResumeOut(BaseModel):

@@ -9,9 +9,11 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from job_portal.database import Base, engine
+from job_portal.routes.admin import router as admin_router
 from job_portal.routes.seeker import router as seeker_router
-from job_portal.routes.applications import router as applications_router  
+from job_portal.routes.applications import router as applications_router
 from job_portal.routes.employer import router as employer_router
+from job_portal.routes.employer_profile import router as employer_profile_router
 from job_portal.routes.messages import router as messages_router
 from job_portal.routes.auth import router as auth_router
 
@@ -68,12 +70,22 @@ _ensure_columns(
         "blocked_by_employer": "INTEGER DEFAULT 0",
     },
 )
+_ensure_columns(
+    "employers",
+    {
+        "description": "TEXT",
+        "industry": "VARCHAR(100)",
+        "website": "VARCHAR(200)",
+    },
+)
 
 app.include_router(seeker_router)
-app.include_router(applications_router)  
+app.include_router(applications_router)
 app.include_router(employer_router)
+app.include_router(employer_profile_router)
 app.include_router(messages_router)
 app.include_router(auth_router)
+app.include_router(admin_router)
 
 app.mount("/UI", StaticFiles(directory="UI"), name="UI")
 

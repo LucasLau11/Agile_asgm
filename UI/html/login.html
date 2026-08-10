@@ -63,8 +63,13 @@
       setButtonBusy(submitBtn, true, "Logging in…");
       try {
         const account = await loginAccount(email, password);
-        statusEl.textContent = `Logged in as ${account.display_name} (${account.role}).`;
+        statusEl.textContent = `Logged in as ${account.display_name} (${account.role}). Redirecting…`;
         statusEl.className = "status-msg success";
+        const destination =
+          account.role === "seeker" ? "/UI/html/profile.html" :
+          account.role === "admin" ? "/UI/html/admin_dashboard.html" :
+          "/UI/html/job_management.html";
+        setTimeout(() => { window.location.href = destination; }, 600);
       } catch (err) {
         statusEl.textContent = err.message;
         statusEl.className = "status-msg error";
@@ -75,3 +80,10 @@
   </script>
 </body>
 </html>
+
+
+
+
+
+
+

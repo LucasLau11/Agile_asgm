@@ -19,7 +19,6 @@
       <a href="/UI/html/notifications.html">Notifications</a>
       <a href="/UI/html/profile.html">Profile</a>
     </nav>
-    <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
   </div>
 </header>
 
@@ -36,17 +35,6 @@
 
   <script src="../js/api.js"></script>
   <script>
-    // Initialize user bar login mock setup just like browse_job.html
-    const seekerId = (typeof getCurrentSeekerId === "function") ? getCurrentSeekerId() : 1;
-    if (typeof renderDevUserBar === "function") {
-      renderDevUserBar("devUserBar");
-    } else {
-      document.getElementById("devUserBar").innerHTML = `
-        Acting as: Seeker #${seekerId} — Aisha 
-        <span style="opacity:0.75">(login stand-in for Sprint 1)</span>
-      `;
-    }
-
     // Helper to safely prevent HTML injection layout breakage
     function escapeHtml(str) {
       if (!str) return "";
@@ -101,20 +89,7 @@
     async function loadApplications() {
       const listEl = document.getElementById("applicationList");
       try {
-        // Replace with your real endpoints e.g. await fetchUserApplications(seekerId)
-        let applications = [];
-        
-        if (typeof fetchUserApplications === "function") {
-          applications = await fetchUserApplications(seekerId);
-        } else {
-          // Fallback mock fetch placeholder call
-          const response = await fetch(`/api/applications?seeker_id=${seekerId}`);
-          if (response.ok) {
-            applications = await response.json();
-          } else {
-            throw new Error("Failed to pull database entries");
-          }
-        }
+        const applications = await fetchUserApplications();
 
         if (applications.length === 0) {
           listEl.innerHTML = `<div class="empty-state">You haven't submitted any job applications yet.</div>`;
@@ -134,8 +109,14 @@
       }
     }
 
-    // Load applications immediately on page boot load
-    document.addEventListener("DOMContentLoaded", loadApplications);
+    async function init() {
+      const account = await requireLogin("seeker");
+      if (!account) return;
+      renderAccountBar("devUserBar", account);
+      await loadApplications();
+    }
+
+    document.addEventListener("DOMContentLoaded", init);
   </script>
 </body>
 </html>

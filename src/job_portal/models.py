@@ -241,12 +241,10 @@ class InterviewInvite(Base):
 
 
 class Employer(Base):
-    """A registered employer/company account (US-04). Deliberately minimal —
-    richer company-profile fields (description, industry, website...) are a
-    later sub-project; this table exists so registration has somewhere to
-    store credentials. Everywhere else in the app, `employer_id` stays a
-    bare int backed by the hardcoded EMPLOYER_DIRECTORY / TEST_EMPLOYERS —
-    reconciling those with this real table is also a later sub-project."""
+    """A registered employer/company account (US-04, US-05). Everywhere
+    else in the app, `employer_id` stays a bare int backed by the hardcoded
+    EMPLOYER_DIRECTORY / TEST_EMPLOYERS — reconciling those with this real
+    table is a later cleanup (flagged alongside phase 2c)."""
 
     __tablename__ = "employers"
 
@@ -256,6 +254,9 @@ class Employer(Base):
     hashed_password = Column(String, nullable=False)
     status = Column(String(20), nullable=False, default="active")
     created_at = Column(DateTime, default=datetime.utcnow)
+    description = Column(Text, nullable=True)
+    industry = Column(String(100), nullable=True)
+    website = Column(String(200), nullable=True)
 
 
 class Admin(Base):

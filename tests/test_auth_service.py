@@ -50,3 +50,21 @@ def test_delete_session_invalidates_it(db_session):
     token = create_session(db_session, "seeker", 42)
     delete_session(db_session, token)
     assert get_session(db_session, token) is None
+
+
+def test_delete_sessions_for_account_only_removes_target_account(db_session):
+    from job_portal.services.auth import create_session, delete_sessions_for_account, get_session
+
+    token_a1 = create_session(db_session, "seeker", 1)
+    token_a2 = create_session(db_session, "seeker", 1)
+    token_b = create_session(db_session, "seeker", 2)
+    token_employer = create_session(db_session, "employer", 1)
+
+    delete_sessions_for_account(db_session, "seeker", 1)
+
+    assert get_session(db_session, token_a1) is None
+    assert get_session(db_session, token_a2) is None
+    assert get_session(db_session, token_b) is not None
+    assert get_session(db_session, token_employer) is not None
+
+

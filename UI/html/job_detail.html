@@ -17,7 +17,6 @@
       <a href="/UI/html/notifications.html">Notifications</a>
       <a href="/UI/html/profile.html">Profile</a>
     </nav>
-    <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
   </div>
 </header>
   <div class="dev-user-bar" id="devUserBar"></div>
@@ -32,7 +31,6 @@ renderDevUserBar("devUserBar");
 
     const pageContent = document.getElementById("pageContent");
     const jobId = new URLSearchParams(location.search).get("id");
-    const seekerId = getCurrentSeekerId();
 
     async function loadJob() {
       if (!jobId) {
@@ -40,6 +38,8 @@ renderDevUserBar("devUserBar");
         return;
       }
       try {
+        const account = await getCurrentAccount();
+        const seekerId = account && account.role === "seeker" ? account.id : null;
         const job = await fetchJob(jobId, seekerId);
         const spotsLabel =
           job.positions_remaining === 0

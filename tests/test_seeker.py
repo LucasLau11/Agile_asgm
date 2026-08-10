@@ -124,6 +124,22 @@ def test_get_job_details(client, sample_job):
     assert "Build and maintain" in body["description"]
 
 
+def test_get_job_shows_match_data_when_logged_in(client, sample_job):
+    """
+    Given a logged-in seeker with matching skills
+    When I GET /api/jobs/{id}
+    Then match_percentage and missing_skills reflect their real profile,
+    sourced from the session — no seeker_id query param needed or accepted.
+    """
+    _login_new_seeker(client, "82")
+    client.put("/api/seekers/me/skills", json={"skills": ["Python", "SQL"]})
+    r = client.get(f"/api/jobs/{sample_job.id}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["match_percentage"] == 67
+    assert body["missing_skills"] == ["FastAPI"]
+
+
 def test_get_missing_job_returns_404(client):
     """
     US-21: View detailed job description (missing job)
@@ -362,11 +378,10 @@ def test_list_jobs_without_seeker_id_has_no_match_data(client, sample_job):
     assert body["missing_skills"] == []
 
 
-def test_list_jobs_with_seeker_id_shows_match_data(client, sample_job):
+def test_list_jobs_shows_match_data_when_logged_in(client, sample_job):
     _login_new_seeker(client, "80")
     client.put("/api/seekers/me/skills", json={"skills": ["Python", "SQL"]})
-    profile_id = client.get("/api/seekers/me").json()["seeker_id"]
-    r = client.get(f"/api/jobs?seeker_id={profile_id}")
+    r = client.get("/api/jobs")
     assert r.status_code == 200
     body = r.json()[0]
     assert body["match_percentage"] == 67
@@ -383,8 +398,7 @@ def test_sort_by_match_orders_best_match_first(client, db_session):
     db_session.commit()
     _login_new_seeker(client, "81")
     client.put("/api/seekers/me/skills", json={"skills": ["Python"]})
-    profile_id = client.get("/api/seekers/me").json()["seeker_id"]
-    r = client.get(f"/api/jobs?seeker_id={profile_id}&sort_by=match")
+    r = client.get("/api/jobs?sort_by=match")
     assert r.status_code == 200
     titles = [job["title"] for job in r.json()]
     assert titles[0] == "High match job"
@@ -488,21 +502,20 @@ def test_positions_remaining_never_negative(client, db_session):
 
 def test_recommended_jobs_scores_by_skill_overlap(client, db_session):
     """
-    Given a seeker with skills Python, SQL
+    Given a logged-in seeker with skills Python, SQL
     And a job requiring Python, SQL, Docker
-    When I fetch recommended jobs for that seeker
+    When I fetch my recommended jobs
     Then the job is returned with a 67% match (2 of 3 required skills)
     """
     _login_new_seeker(client, "50")
     client.put("/api/seekers/me/skills", json={"skills": ["Python", "SQL"]})
-    profile_id = client.get("/api/seekers/me").json()["seeker_id"]
     db_session.add(
         Job(employer_id=1, title="Matched job", description="x" * 60,
             skills_required="Python,SQL,Docker", status="open")
     )
     db_session.commit()
 
-    r = client.get(f"/api/jobs/recommended?seeker_id={profile_id}")
+    r = client.get("/api/jobs/recommended")
     assert r.status_code == 200
     results = r.json()
     assert len(results) == 1
@@ -511,30 +524,41 @@ def test_recommended_jobs_scores_by_skill_overlap(client, db_session):
 
 def test_recommended_jobs_excludes_zero_overlap(client, db_session):
     """
-    Given a seeker with skills that share nothing with a job's requirements
-    When I fetch recommended jobs
+    Given a logged-in seeker with skills that share nothing with a job's requirements
+    When I fetch my recommended jobs
     Then that job is excluded entirely (0% match doesn't clear the min_match bar)
     """
     _login_new_seeker(client, "51")
     client.put("/api/seekers/me/skills", json={"skills": ["Photoshop"]})
-    profile_id = client.get("/api/seekers/me").json()["seeker_id"]
     db_session.add(
         Job(employer_id=1, title="Unrelated job", description="x" * 60,
             skills_required="Python,SQL", status="open")
     )
     db_session.commit()
 
-    r = client.get(f"/api/jobs/recommended?seeker_id={profile_id}")
+    r = client.get("/api/jobs/recommended")
     assert r.json() == []
+
+
+def test_recommended_jobs_requires_login(client):
+    """
+    Given nobody is logged in
+    When I GET /api/jobs/recommended
+    Then I get 401 — recommendations require a real account now that
+    browsing personalization no longer depends on a client-supplied id.
+    """
+    r = client.get("/api/jobs/recommended")
+    assert r.status_code == 401
 
 
 def test_recommended_jobs_empty_when_seeker_has_no_skills(client):
     """
-    Given a seeker who has never set any skills
+    Given a logged-in seeker who has never set any skills
     When I fetch recommended jobs
     Then I get an empty list rather than an error
     """
-    r = client.get("/api/jobs/recommended?seeker_id=999")
+    _login_new_seeker(client, "52")
+    r = client.get("/api/jobs/recommended")
     assert r.status_code == 200
     assert r.json() == []
 
@@ -902,3 +926,188 @@ def test_applications_fragment_works_for_logged_in_seeker(client):
     r = client.get("/my-applications-fragment")
     assert r.status_code == 200
     assert "haven't submitted any job applications" in r.text
+
+
+def test_cannot_delete_another_seekers_experience(client):
+    """
+    Given seeker A has a real work experience entry
+    When seeker B (a different logged-in account) tries to delete it by its real id
+    Then it 404s — B's session can't reach A's data no matter what id they guess,
+    and A's entry is still there afterward
+    """
+    _login_new_seeker(client, "delOwnerA", full_name="Delete Owner A")
+    add_res = client.post("/api/seekers/me/experience", json={
+        "job_title": "A's job", "company_name": "A Co",
+    })
+    exp_id = add_res.json()["experience"][0]["id"]
+    client.post("/api/auth/logout")
+
+    _login_new_seeker(client, "delOwnerB", full_name="Delete Owner B")
+    r = client.delete(f"/api/seekers/me/experience/{exp_id}")
+    assert r.status_code == 404
+    client.post("/api/auth/logout")
+
+    # Log back into A's own account (not a new registration) and confirm
+    # the entry is still there, untouched by B's attempt.
+    login_res = client.post("/api/auth/login", json={
+        "email": "seeker-delOwnerA@example.com", "password": "correcthorse",
+    })
+    assert login_res.status_code == 200
+    me = client.get("/api/seekers/me")
+    assert len(me.json()["experience"]) == 1
+    assert me.json()["experience"][0]["id"] == exp_id
+
+
+def test_cannot_delete_another_seekers_education(client):
+    """
+    Given seeker A has a real education entry
+    When seeker B tries to delete it by its real id
+    Then it 404s, same as the experience case above
+    """
+    _login_new_seeker(client, "eduOwnerA", full_name="Edu Owner A")
+    add_res = client.post("/api/seekers/me/education", json={
+        "institution": "A University",
+    })
+    edu_id = add_res.json()["education"][0]["id"]
+    client.post("/api/auth/logout")
+
+    _login_new_seeker(client, "eduOwnerB", full_name="Edu Owner B")
+    r = client.delete(f"/api/seekers/me/education/{edu_id}")
+    assert r.status_code == 404
+
+
+def test_applications_fragment_rejects_employer_session(client):
+    """
+    Given someone is logged in as an employer, not a seeker
+    When they GET /my-applications-fragment
+    Then they get 401 — same role check as every other seeker-only endpoint
+    """
+    client.post("/api/auth/register/employer", json={
+        "company_name": "Some Co", "email": "not-a-seeker-frag@example.com", "password": "correcthorse",
+    })
+    r = client.get("/my-applications-fragment")
+    assert r.status_code == 401
+
+
+def test_update_profile_rejects_email_already_used_by_another_account(client):
+    """
+    Given seeker A is registered with a real email
+    When seeker B tries to change THEIR OWN profile email to A's email
+    Then it's rejected with 409 — B can't hijack A's login identifier
+    """
+    _login_new_seeker(client, "emailOwnerA", full_name="Email Owner A")
+    client.post("/api/auth/logout")
+
+    _login_new_seeker(client, "emailOwnerB", full_name="Email Owner B")
+    r = client.put("/api/seekers/me", json={
+        "full_name": "Email Owner B",
+        "email": "seeker-emailOwnerA@example.com",
+        "phone": "012-3456789",
+    })
+    assert r.status_code == 409
+
+
+def test_update_profile_allows_keeping_same_email(client):
+    """
+    Given a seeker updates their profile WITHOUT changing their email
+    When I PUT /api/seekers/me with the same email they already have
+    Then it succeeds — the uniqueness check only blocks a change to
+    SOMEONE ELSE'S email, not "no-op" resubmission of your own
+    """
+    _login_new_seeker(client, "sameEmail", full_name="Same Email Seeker")
+    r = client.put("/api/seekers/me", json={
+        "full_name": "Same Email Seeker Updated",
+        "email": "seeker-sameEmail@example.com",
+        "phone": "012-3456789",
+    })
+    assert r.status_code == 200
+    assert r.json()["full_name"] == "Same Email Seeker Updated"
+
+
+def test_apply_page_requires_login(client, sample_job):
+    r = client.get(f"/apply?job_id={sample_job.id}", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/UI/html/login.html"
+
+
+def test_apply_page_loads_for_logged_in_seeker(client, sample_job):
+    _login_new_seeker(client, "applyPage")
+    r = client.get(f"/apply?job_id={sample_job.id}")
+    assert r.status_code == 200
+    assert sample_job.title in r.text
+
+
+def test_apply_page_rejects_employer_session(client, sample_job):
+    client.post("/api/auth/register/employer", json={
+        "company_name": "Some Co", "email": "not-a-seeker-apply@example.com", "password": "correcthorse",
+    })
+    r = client.get(f"/apply?job_id={sample_job.id}", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/UI/html/login.html"
+
+
+def test_submitting_application_requires_login(client, sample_job):
+    r = client.post("/apply", data={"job_id": sample_job.id, "cover_letter": "Hire me"}, follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/UI/html/login.html"
+
+
+def test_submitting_application_uses_session_seeker_id(client, sample_job):
+    """
+    Given a logged-in seeker submits an application
+    When I POST /apply (there's no seeker_id field in the form at all
+    anymore — the backend only ever trusts the session)
+    Then the application is stamped with THAT seeker's real id, and shows
+    up when they fetch their own applications afterward.
+    """
+    _login_new_seeker(client, "applySubmit", full_name="Apply Submitter")
+
+    r = client.post("/apply", data={"job_id": sample_job.id, "cover_letter": "Hire me"})
+    assert r.status_code in (200, 303)
+
+    apps = client.get("/api/applications").json()
+    assert len(apps) == 1
+    assert apps[0]["job_title"] == sample_job.title
+
+
+def test_cannot_submit_application_as_someone_else(client, sample_job):
+    """
+    Given seeker A submitted an application while logged in
+    When a different seeker B logs in and fetches THEIR OWN applications
+    Then B sees an empty list — A's application isn't visible to B, and
+    there's no client-controlled identity field left on the form to spoof.
+    """
+    _login_new_seeker(client, "applySpoofA", full_name="Real Applicant")
+    client.post("/apply", data={"job_id": sample_job.id, "cover_letter": "Hire me"})
+    client.post("/api/auth/logout")
+
+    _login_new_seeker(client, "applySpoofB", full_name="Other Seeker")
+    apps = client.get("/api/applications").json()
+    assert apps == []
+
+
+def test_api_applications_requires_login(client):
+    r = client.get("/api/applications")
+    assert r.status_code == 401
+
+
+def test_application_submitted_while_logged_in_appears_in_own_tracker(client, sample_job):
+    """
+    Closes the phase 2a interim gap: an application submitted through the
+    real apply flow while logged in must show up in that same seeker's own
+    tracker — both the JSON endpoint (my_application.html) and the HTML
+    fragment (profile.html's applications tracker).
+    """
+    _login_new_seeker(client, "e2eApply", full_name="End to End Applicant")
+
+    r = client.post("/apply", data={"job_id": sample_job.id, "cover_letter": "I would love to work here."})
+    assert r.status_code in (200, 303)
+
+    api_apps = client.get("/api/applications").json()
+    assert len(api_apps) == 1
+    assert api_apps[0]["job_title"] == sample_job.title
+
+    fragment = client.get("/my-applications-fragment")
+    assert fragment.status_code == 200
+    assert sample_job.title in fragment.text
+    assert "haven't submitted any job applications" not in fragment.text

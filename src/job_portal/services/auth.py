@@ -81,3 +81,14 @@ def get_session(db: DBSession, token: str) -> Optional[SessionModel]:
 def delete_session(db: DBSession, token: str) -> None:
     db.query(SessionModel).filter(SessionModel.token == token).delete()
     db.commit()
+
+
+def delete_sessions_for_account(db: DBSession, account_type: str, account_id: int) -> None:
+    """Invalidates every active session for one account — used when an
+    admin deletes or suspends an account, so a moderated user's existing
+    cookie stops working immediately instead of remaining valid for up to
+    SESSION_LIFETIME longer."""
+    db.query(SessionModel).filter(
+        SessionModel.account_type == account_type, SessionModel.account_id == account_id
+    ).delete()
+    db.commit()
