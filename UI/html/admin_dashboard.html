@@ -83,7 +83,7 @@
             <div>
               <button type="button" class="btn btn-secondary" data-action="details-employer" data-id="${employer.id}">Details</button>
               ${employer.verification_document_filename ? `<a class="btn btn-secondary" href="${employerVerificationDocumentUrl(employer.id)}" target="_blank">Document</a>` : ""}
-              ${employer.verification_status === "pending" ? `<button type="button" class="btn btn-primary" data-action="approve-employer" data-id="${employer.id}">Approve</button><button type="button" class="btn btn-secondary" data-action="reject-employer" data-id="${employer.id}">Reject</button>` : ""}
+              ${employer.verification_status === "pending" ? `<input type="text" data-rejection-for="${employer.id}" maxlength="1000" placeholder="Rejection reason" style="max-width:180px;" /><button type="button" class="btn btn-primary" data-action="approve-employer" data-id="${employer.id}">Approve</button><button type="button" class="btn btn-secondary" data-action="reject-employer" data-id="${employer.id}">Reject</button>` : ""}
               <button type="button" class="btn btn-secondary" data-action="suspend-employer" data-id="${employer.id}" data-status="${employer.status}">${suspendLabel}</button>
               <button type="button" class="btn btn-secondary" data-action="delete-employer" data-id="${employer.id}" data-name="${escapeHtml(employer.company_name)}">Delete</button>
             </div>
@@ -179,10 +179,22 @@
       });
       document.querySelectorAll('button[data-action="reject-employer"]').forEach((btn) => {
         btn.addEventListener("click", async () => {
-          const reason = prompt("Reason for rejection:");
-          if (!reason || !reason.trim()) return;
-          try { await rejectEmployerVerification(btn.dataset.id, reason.trim()); await Promise.all([loadEmployers(), loadStatistics()]); }
-          catch (err) { alert(err.message); }
+          const input = document.querySelector(`input[data-rejection-for="${btn.dataset.id}"]`);
+          const reason = input ? input.value.trim() : "";
+          if (!reason) {
+            alert("Enter a rejection reason before rejecting this employer.");
+            if (input) input.focus();
+            return;
+          }
+          if (!confirm("Reject this employer registration?")) return;
+          setButtonBusy(btn, true, "Rejecting...");
+          try {
+            await rejectEmployerVerification(btn.dataset.id, reason);
+            await Promise.all([loadEmployers(), loadStatistics()]);
+          } catch (err) {
+            alert(`Couldn't reject this employer: ${err.message}`);
+            setButtonBusy(btn, false);
+          }
         });
       });
       document.querySelectorAll('button[data-action="suspend-employer"]').forEach((btn) => {
