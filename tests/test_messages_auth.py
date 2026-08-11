@@ -90,7 +90,6 @@ def test_cannot_message_nonexistent_recipient(client):
     response = client.post("/api/messages", json={
         "recipient_id": 999999, "body": "This must not create an orphan conversation."
     })
-    assert response.status_code == 201, response.text
     assert response.status_code == 404
 
 
