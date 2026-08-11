@@ -45,11 +45,12 @@ def _login_new_seeker(client, tag, full_name="Test Seeker"):
     # Real-recipient validation requires the formerly hard-coded IDs 1/2
     # used by legacy cases below to correspond to actual employer rows.
     for index in (1, 2):
-        client.post("/api/auth/register/employer", json={
+        response = client.post("/api/auth/register/employer", json={
             "company_name": f"Contact Employer {tag}-{index}",
             "email": f"contact-employer-{tag}-{index}@example.com",
             "password": "correcthorse",
         })
+        assert response.status_code == 201, response.text
         client.post("/api/auth/logout")
     client.post("/api/auth/register/seeker", json={
         "full_name": full_name,
@@ -60,18 +61,20 @@ def _login_new_seeker(client, tag, full_name="Test Seeker"):
 
 def _login_new_employer(client, tag, company_name="Test Co"):
     # Likewise ensure the legacy recipient IDs refer to real seekers.
-    for index in (1, 2):
-        client.post("/api/auth/register/seeker", json={
-            "full_name": f"Contact Seeker {tag}-{index}",
+    for index, word in ((1, "One"), (2, "Two")):
+        response = client.post("/api/auth/register/seeker", json={
+            "full_name": f"Contact Seeker {word}",
             "email": f"contact-seeker-{tag}-{index}@example.com",
             "password": "correcthorse",
         })
+        assert response.status_code == 201, response.text
         client.post("/api/auth/logout")
-    client.post("/api/auth/register/employer", json={
+    response = client.post("/api/auth/register/employer", json={
         "company_name": company_name,
         "email": f"employer-{tag}@example.com",
         "password": "correcthorse",
     })
+    assert response.status_code == 201, response.text
 
 
 def _login(client, email, password="correcthorse"):

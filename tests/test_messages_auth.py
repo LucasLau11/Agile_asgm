@@ -12,11 +12,12 @@ from job_portal.models import Conversation, Message
 
 def _login_new_seeker(client, tag, full_name="Test Seeker"):
     for index in (1, 2):
-        client.post("/api/auth/register/employer", json={
+        response = client.post("/api/auth/register/employer", json={
             "company_name": f"Contact Employer {tag}-{index}",
             "email": f"contact-employer-msgauth-{tag}-{index}@example.com",
             "password": "correcthorse",
         })
+        assert response.status_code == 201, response.text
         client.post("/api/auth/logout")
     client.post("/api/auth/register/seeker", json={
         "full_name": full_name,
@@ -26,18 +27,20 @@ def _login_new_seeker(client, tag, full_name="Test Seeker"):
 
 
 def _login_new_employer(client, tag, company_name="Test Co"):
-    for index in (1, 2):
-        client.post("/api/auth/register/seeker", json={
-            "full_name": f"Contact Seeker {tag}-{index}",
+    for index, word in ((1, "One"), (2, "Two")):
+        response = client.post("/api/auth/register/seeker", json={
+            "full_name": f"Contact Seeker {word}",
             "email": f"contact-seeker-msgauth-{tag}-{index}@example.com",
             "password": "correcthorse",
         })
+        assert response.status_code == 201, response.text
         client.post("/api/auth/logout")
-    client.post("/api/auth/register/employer", json={
+    response = client.post("/api/auth/register/employer", json={
         "company_name": company_name,
         "email": f"employer-msgauth-{tag}@example.com",
         "password": "correcthorse",
     })
+    assert response.status_code == 201, response.text
 
 
 def _seed_conversation(db_session, seeker_id, employer_id):
@@ -87,6 +90,7 @@ def test_cannot_message_nonexistent_recipient(client):
     response = client.post("/api/messages", json={
         "recipient_id": 999999, "body": "This must not create an orphan conversation."
     })
+    assert response.status_code == 201, response.text
     assert response.status_code == 404
 
 
