@@ -257,6 +257,14 @@ class Employer(Base):
     description = Column(Text, nullable=True)
     industry = Column(String(100), nullable=True)
     website = Column(String(200), nullable=True)
+    registration_number = Column(String(100), nullable=True)
+    verification_status = Column(String(20), nullable=False, default="pending")
+    verification_document_filename = Column(String(255), nullable=True)
+    verification_document_path = Column(String(500), nullable=True)
+    verification_submitted_at = Column(DateTime, nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+    verified_by_admin_id = Column(Integer, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
 
 
 class Admin(Base):

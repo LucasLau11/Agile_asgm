@@ -42,6 +42,15 @@ def _send(client, recipient_id, body_text, job_id=None):
 
 
 def _login_new_seeker(client, tag, full_name="Test Seeker"):
+    # Real-recipient validation requires the formerly hard-coded IDs 1/2
+    # used by legacy cases below to correspond to actual employer rows.
+    for index in (1, 2):
+        client.post("/api/auth/register/employer", json={
+            "company_name": f"Contact Employer {tag}-{index}",
+            "email": f"contact-employer-{tag}-{index}@example.com",
+            "password": "correcthorse",
+        })
+        client.post("/api/auth/logout")
     client.post("/api/auth/register/seeker", json={
         "full_name": full_name,
         "email": f"seeker-{tag}@example.com",
@@ -50,6 +59,14 @@ def _login_new_seeker(client, tag, full_name="Test Seeker"):
 
 
 def _login_new_employer(client, tag, company_name="Test Co"):
+    # Likewise ensure the legacy recipient IDs refer to real seekers.
+    for index in (1, 2):
+        client.post("/api/auth/register/seeker", json={
+            "full_name": f"Contact Seeker {tag}-{index}",
+            "email": f"contact-seeker-{tag}-{index}@example.com",
+            "password": "correcthorse",
+        })
+        client.post("/api/auth/logout")
     client.post("/api/auth/register/employer", json={
         "company_name": company_name,
         "email": f"employer-{tag}@example.com",

@@ -99,6 +99,7 @@ def register_employer(
         email=payload.email,
         hashed_password=hash_password(payload.password),
         status="active",
+        verification_status="pending",
     )
     db.add(employer)
     db.commit()
@@ -138,6 +139,8 @@ def login(payload: LoginIn, response: Response, db: DBSession = Depends(get_db))
             raise HTTPException(status_code=401, detail="Incorrect email or password.")
         if employer.status == "suspended":
             raise HTTPException(status_code=403, detail="This account has been suspended.")
+        if employer.verification_status == "rejected":
+            raise HTTPException(status_code=403, detail="This employer registration was rejected.")
         token = create_session(db, "employer", employer.id)
         _set_session_cookie(response, token)
         return AuthAccountOut(

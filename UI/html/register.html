@@ -56,6 +56,16 @@
           <input type="password" id="employerPasswordInput" required />
           <div class="field-error" id="employerPasswordError"></div>
         </div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="registrationNumberInput">SSM registration number</label>
+          <input type="text" id="registrationNumberInput" maxlength="100" required />
+          <div class="field-error" id="registrationNumberError"></div>
+        </div>
+        <div class="form-field" style="margin-bottom:16px;">
+          <label for="verificationDocumentInput">SSM registration document (PDF or DOCX, max 5 MB)</label>
+          <input type="file" id="verificationDocumentInput" accept=".pdf,.docx" required />
+          <div class="field-error" id="verificationDocumentError"></div>
+        </div>
         <button type="submit" class="btn btn-primary" style="width:100%;">Create account</button>
       </form>
 
@@ -134,9 +144,13 @@
       const nameEl = document.getElementById("employerNameInput");
       const emailEl = document.getElementById("employerEmailInput");
       const passwordEl = document.getElementById("employerPasswordInput");
+      const registrationEl = document.getElementById("registrationNumberInput");
+      const documentEl = document.getElementById("verificationDocumentInput");
       document.getElementById("employerNameError").textContent = "";
       document.getElementById("employerEmailError").textContent = "";
       document.getElementById("employerPasswordError").textContent = "";
+      document.getElementById("registrationNumberError").textContent = "";
+      document.getElementById("verificationDocumentError").textContent = "";
       statusEl.textContent = "";
 
       if (!nameEl.value.trim()) {
@@ -151,11 +165,20 @@
         document.getElementById("employerPasswordError").textContent = "Password must be at least 8 characters.";
         return;
       }
+      if (!registrationEl.value.trim()) {
+        document.getElementById("registrationNumberError").textContent = "SSM registration number is required.";
+        return;
+      }
+      if (!documentEl.files[0]) {
+        document.getElementById("verificationDocumentError").textContent = "SSM registration document is required.";
+        return;
+      }
 
       const submitBtn = e.target.querySelector('button[type="submit"]');
       setButtonBusy(submitBtn, true, "Creating account…");
       try {
         const account = await registerEmployer(nameEl.value.trim(), emailEl.value.trim(), passwordEl.value);
+        await submitEmployerVerificationDocument(registrationEl.value.trim(), documentEl.files[0]);
         statusEl.textContent = `Account created — you're logged in as ${account.display_name}.`;
         statusEl.className = "status-msg success";
         employerForm.reset();

@@ -89,6 +89,9 @@ class JobOut(BaseModel):
 
     id: int
     employer_id: int
+    employer_name: str = ""
+    employer_verification_status: str = "unverified"
+    employer_verified: bool = False
     title: str
     description: str
     location: Optional[str] = ""
@@ -115,10 +118,14 @@ class JobOut(BaseModel):
         credibility_reasons: Optional[List[str]] = None,
         match_percentage: Optional[int] = None,
         missing_skills: Optional[List[str]] = None,
+        employer=None,
     ) -> "JobOut":
         return cls(
             id=job.id,
             employer_id=job.employer_id,
+            employer_name=employer.company_name if employer else "",
+            employer_verification_status=(employer.verification_status if employer else "unverified"),
+            employer_verified=bool(employer and employer.verification_status == "approved"),
             title=job.title,
             description=job.description,
             location=job.location,
@@ -504,6 +511,10 @@ class EmployerProfileOut(BaseModel):
     description: Optional[str] = None
     industry: Optional[str] = None
     website: Optional[str] = None
+    registration_number: Optional[str] = None
+    verification_status: str = "pending"
+    verification_document_filename: Optional[str] = None
+    rejection_reason: Optional[str] = None
 
 
 class EmployerProfileUpdate(BaseModel):
@@ -698,6 +709,13 @@ class ConversationOut(BaseModel):
     blocked_by_me: bool = False
 
 
+class MessageContactOut(BaseModel):
+    id: int
+    name: str
+    role: str
+    verification_status: Optional[str] = None
+
+
 class AdminSeekerOut(BaseModel):
     """Row shape for GET /api/admin/seekers."""
 
@@ -718,6 +736,29 @@ class AdminEmployerOut(BaseModel):
     company_name: str
     email: str
     status: str
+    registration_number: Optional[str] = None
+    description: Optional[str] = None
+    industry: Optional[str] = None
+    website: Optional[str] = None
+    verification_status: str = "pending"
+    verification_document_filename: Optional[str] = None
+    verification_submitted_at: Optional[datetime] = None
+    verified_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+
+
+class EmployerVerificationDecisionIn(BaseModel):
+    reason: Optional[str] = Field(None, max_length=1000)
+
+
+class AdminStatisticsOut(BaseModel):
+    seekers: int
+    employers: int
+    jobs: int
+    open_jobs: int
+    applications: int
+    pending_verifications: int
+    verified_employers: int
 
 
 class ParsedResumeOut(BaseModel):

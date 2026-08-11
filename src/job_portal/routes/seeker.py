@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from job_portal.database import get_db
-from job_portal.models import Education, Job, SeekerProfile, WorkExperience
+from job_portal.models import Education, Employer, Job, SeekerProfile, WorkExperience
 from job_portal.routes.auth import get_current_account_optional, require_role
 from job_portal.schemas import (
     EducationIn,
@@ -101,6 +101,7 @@ def list_jobs(
 
     results = []
     for job in jobs:
+        employer = db.query(Employer).filter(Employer.id == job.employer_id).first()
         match_percentage = None
         missing_skills: List[str] = []
         if seeker_id is not None:
@@ -114,6 +115,7 @@ def list_jobs(
                 credibility_reasons=compute_credibility_reasons(job, db),
                 match_percentage=match_percentage,
                 missing_skills=missing_skills,
+                employer=employer,
             )
         )
 
@@ -151,6 +153,7 @@ def recommended_jobs(
             credibility_reasons=compute_credibility_reasons(job, db),
             match_percentage=match["match_percentage"],
             missing_skills=match["missing_skills"],
+            employer=db.query(Employer).filter(Employer.id == job.employer_id).first(),
         )
         for match, job in scored[:limit]
     ]
@@ -182,6 +185,7 @@ def get_job(
         credibility_reasons=compute_credibility_reasons(job, db),
         match_percentage=match_percentage,
         missing_skills=missing_skills,
+        employer=db.query(Employer).filter(Employer.id == job.employer_id).first(),
     )
 
 @router.get("/api/seekers/me", response_model=SeekerProfileOut)

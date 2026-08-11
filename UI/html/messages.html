@@ -664,31 +664,49 @@
 
     // ---------- New message modal ----------
 
-    function populateRecipientOptions() {
+    async function populateRecipientOptions(prefillOtherId) {
       const select = document.getElementById("recipientSelect");
-      const options = otherRole === "employer" ? TEST_EMPLOYERS : TEST_SEEKERS;
-      select.innerHTML = options.map((o) => `<option value="${o.id}">${escapeHtml(o.label)}</option>`).join("");
+      select.disabled = true;
+      select.innerHTML = `<option>Loading real accounts...</option>`;
+      const contacts = await fetchMessageContacts();
+      select.innerHTML = contacts.length
+        ? contacts.map((contact) => `<option value="${contact.id}">${escapeHtml(contact.name)}${contact.verification_status === "approved" ? " ✓ Verified" : ""}</option>`).join("")
+        : `<option value="">No available ${escapeHtml(otherRole)} accounts</option>`;
+      select.disabled = contacts.length === 0;
+      if (prefillOtherId && contacts.some((contact) => contact.id === Number(prefillOtherId))) {
+        select.value = String(prefillOtherId);
+      }
     }
 
-    function openNewMessageModal(prefillOtherId) {
-      populateRecipientOptions();
-      if (prefillOtherId) document.getElementById("recipientSelect").value = String(prefillOtherId);
+    async function openNewMessageModal(prefillOtherId) {
       document.getElementById("newMessageBody").value = "";
       document.getElementById("newMessageError").style.display = "none";
       document.getElementById("newMessageModal").style.display = "flex";
+      try {
+        await populateRecipientOptions(prefillOtherId);
+      } catch (err) {
+        const error = document.getElementById("newMessageError");
+        error.textContent = err.message;
+        error.style.display = "block";
+      }
     }
 
     function closeNewMessageModal() {
       document.getElementById("newMessageModal").style.display = "none";
     }
 
-    document.getElementById("newMessageBtn").addEventListener("click", () => openNewMessageModal());
+    document.getElementById("newMessageBtn").addEventListener("click", () => { openNewMessageModal(); });
     document.getElementById("cancelNewMessage").addEventListener("click", closeNewMessageModal);
 
     document.getElementById("sendNewMessage").addEventListener("click", async () => {
       const recipientId = Number(document.getElementById("recipientSelect").value);
       const body = document.getElementById("newMessageBody").value.trim();
       const errEl = document.getElementById("newMessageError");
+      if (!recipientId) {
+        errEl.textContent = "No valid recipient is selected.";
+        errEl.style.display = "block";
+        return;
+      }
       if (!body) {
         errEl.textContent = "Message cannot be empty.";
         errEl.style.display = "block";

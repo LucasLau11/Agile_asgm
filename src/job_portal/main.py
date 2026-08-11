@@ -76,8 +76,17 @@ _ensure_columns(
         "description": "TEXT",
         "industry": "VARCHAR(100)",
         "website": "VARCHAR(200)",
+        "registration_number": "VARCHAR(100)",
+        "verification_status": "VARCHAR(20) DEFAULT 'pending'",
+        "verification_document_filename": "VARCHAR(255)",
+        "verification_document_path": "VARCHAR(500)",
+        "verification_submitted_at": "DATETIME",
+        "verified_at": "DATETIME",
+        "verified_by_admin_id": "INTEGER",
+        "rejection_reason": "TEXT",
     },
 )
+
 
 app.include_router(seeker_router)
 app.include_router(applications_router)

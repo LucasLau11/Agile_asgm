@@ -9,8 +9,7 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
 from job_portal.database import get_db
-from job_portal.models import Conversation, InterviewInvite, Message, Notification, SeekerProfile
-from job_portal.routes.applications import EMPLOYER_DIRECTORY
+from job_portal.models import Conversation, Employer, InterviewInvite, Message, Notification, SeekerProfile
 from job_portal.routes.auth import require_participant_role, require_role
 from job_portal.schemas import (
     ConversationOut,
@@ -18,6 +17,7 @@ from job_portal.schemas import (
     InterviewResponseIn,
     MessageCreate,
     MessageEdit,
+    MessageContactOut,
     MessageOut,
 )
 from job_portal.services.file_validation import (
@@ -44,15 +44,30 @@ def _seeker_name(seeker_id: int, db: Session) -> str:
     return f"Seeker #{seeker_id}"
 
 
-def _employer_name(employer_id: int) -> str:
-    return EMPLOYER_DIRECTORY.get(employer_id, f"Employer #{employer_id}")
+def _employer_name(employer_id: int, db: Session) -> str:
+    employer = db.query(Employer).filter(Employer.id == employer_id).first()
+    return employer.company_name if employer else f"Employer #{employer_id}"
 
 
 def _other_party_name(role: str, other_id: int, db: Session) -> str:
     """role is the *other* party's role (i.e. the opposite of the requester)."""
     if role == "seeker":
         return _seeker_name(other_id, db)
-    return _employer_name(other_id)
+    return _employer_name(other_id, db)
+
+
+def _require_real_recipient(db: Session, sender_role: str, recipient_id: int) -> None:
+    """Reject made-up IDs before they can create orphan conversations."""
+    if sender_role == "seeker":
+        recipient = db.query(Employer).filter(
+            Employer.id == recipient_id, Employer.status == "active"
+        ).first()
+    else:
+        recipient = db.query(SeekerProfile).filter(
+            SeekerProfile.seeker_id == recipient_id, SeekerProfile.status == "active"
+        ).first()
+    if recipient is None:
+        raise HTTPException(status_code=404, detail="Message recipient not found or unavailable.")
 
 
 def _truncate(text: str) -> str:
@@ -108,7 +123,7 @@ def _notify_recipient(
 ) -> None:
     """Never notifies the sender — recipient only, same as any chat app."""
     sender_name = (
-        _seeker_name(sender_id, db) if sender_role == "seeker" else _employer_name(sender_id)
+        _seeker_name(sender_id, db) if sender_role == "seeker" else _employer_name(sender_id, db)
     )
     recipient_role = "employer" if sender_role == "seeker" else "seeker"
     db.add(
@@ -157,6 +172,31 @@ def _block_status(convo: Conversation, role: str) -> dict:
 # ---------- Send (text) ----------
 
 
+@router.get("/api/messages/contacts", response_model=list[MessageContactOut])
+def api_list_message_contacts(
+    search: Optional[str] = Query(None, max_length=150),
+    account: dict = Depends(require_participant_role()),
+    db: Session = Depends(get_db),
+) -> list[MessageContactOut]:
+    """Return real, currently active accounts for the opposite role."""
+    term = (search or "").strip()
+    if account["role"] == "seeker":
+        query = db.query(Employer).filter(Employer.status == "active")
+        if term:
+            query = query.filter(Employer.company_name.ilike(f"%{term}%"))
+        return [MessageContactOut(
+            id=e.id, name=e.company_name, role="employer",
+            verification_status=e.verification_status,
+        ) for e in query.order_by(Employer.company_name).all()]
+
+    query = db.query(SeekerProfile).filter(SeekerProfile.status == "active")
+    if term:
+        query = query.filter(SeekerProfile.full_name.ilike(f"%{term}%"))
+    return [MessageContactOut(
+        id=s.seeker_id, name=s.full_name or f"Seeker #{s.seeker_id}", role="seeker"
+    ) for s in query.order_by(SeekerProfile.full_name).all()]
+
+
 @router.post("/api/messages")
 async def api_send_message(
     body: MessageCreate,
@@ -167,6 +207,7 @@ async def api_send_message(
     conversation on first contact, appends the message, and notifies the
     recipient — but never the sender."""
     sender_role, sender_id = account["role"], account["id"]
+    _require_real_recipient(db, sender_role, body.recipient_id)
 
     if sender_role == "seeker":
         seeker_id, employer_id = sender_id, body.recipient_id
@@ -229,6 +270,7 @@ async def api_send_message_with_attachment(
         raise HTTPException(status_code=422, detail="Caption is too long (max 4000 characters).")
 
     sender_role, sender_id = account["role"], account["id"]
+    _require_real_recipient(db, sender_role, recipient_id)
     if sender_role == "seeker":
         seeker_id, employer_id = sender_id, recipient_id
     else:
@@ -356,6 +398,7 @@ async def api_send_interview_invite(
     plain text. Rendered as a distinct card in messages.html, with an
     Accept/Decline action for the seeker (see api_respond_to_interview)."""
 
+    _require_real_recipient(db, "employer", seeker_id)
     convo = _get_or_create_conversation(db, seeker_id, employer_id)
     _require_unblocked(convo)
     _unhide_for_both(convo)
@@ -732,6 +775,7 @@ async def api_find_or_create_conversation(
     (existing or brand new, still-empty) thread without posting a message
     first."""
 
+    _require_real_recipient(db, account["role"], other_id)
     if account["role"] == "seeker":
         seeker_id, employer_id = account["id"], other_id
     else:

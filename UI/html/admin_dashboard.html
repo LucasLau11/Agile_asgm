@@ -17,7 +17,12 @@
 
   <main class="page">
     <h1>Admin dashboard</h1>
-    <p class="subtitle">Moderate job seeker and employer accounts.</p>
+    <p class="subtitle">Monitor activity and review employer registrations.</p>
+
+    <section class="profile-section">
+      <h2>Platform overview</h2>
+      <div id="statistics" class="search-bar"><p class="loading-state">Loading...</p></div>
+    </section>
 
     <section class="profile-section">
       <h2>Job seekers</h2>
@@ -25,7 +30,12 @@
     </section>
 
     <section class="profile-section">
-      <h2>Employers</h2>
+      <h2>Employers <span id="pendingCount" class="skill-tag"></span></h2>
+      <div class="search-bar" style="margin-bottom:14px;">
+        <input id="employerSearch" type="search" placeholder="Search company, email, or SSM number" />
+        <select id="verificationFilter"><option value="">All verification statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>
+        <button class="btn btn-secondary" id="employerSearchBtn">Search</button>
+      </div>
       <div id="employersList"><p class="loading-state">Loading…</p></div>
     </section>
   </main>
@@ -36,7 +46,7 @@
       const account = await requireLogin("admin");
       if (!account) return;
       renderAccountBar("devUserBar", account);
-      await Promise.all([loadSeekers(), loadEmployers()]);
+      await Promise.all([loadStatistics(), loadSeekers(), loadEmployers()]);
     }
 
     function statusBadgeHtml(status) {
@@ -67,14 +77,29 @@
           <div class="entry-card-header">
             <div>
               <div class="entry-title">${escapeHtml(employer.company_name)}</div>
-              <div class="entry-subtitle">${escapeHtml(employer.email)} &nbsp;${statusBadgeHtml(employer.status)}</div>
+              <div class="entry-subtitle">${escapeHtml(employer.email)} &nbsp;${statusBadgeHtml(employer.status)} &nbsp;${statusBadgeHtml(employer.verification_status)}</div>
+              <div class="entry-subtitle">SSM: ${escapeHtml(employer.registration_number || "Not submitted")}</div>
             </div>
             <div>
+              <button type="button" class="btn btn-secondary" data-action="details-employer" data-id="${employer.id}">Details</button>
+              ${employer.verification_document_filename ? `<a class="btn btn-secondary" href="${employerVerificationDocumentUrl(employer.id)}" target="_blank">Document</a>` : ""}
+              ${employer.verification_status === "pending" ? `<button type="button" class="btn btn-primary" data-action="approve-employer" data-id="${employer.id}">Approve</button><button type="button" class="btn btn-secondary" data-action="reject-employer" data-id="${employer.id}">Reject</button>` : ""}
               <button type="button" class="btn btn-secondary" data-action="suspend-employer" data-id="${employer.id}" data-status="${employer.status}">${suspendLabel}</button>
               <button type="button" class="btn btn-secondary" data-action="delete-employer" data-id="${employer.id}" data-name="${escapeHtml(employer.company_name)}">Delete</button>
             </div>
           </div>
         </div>`;
+    }
+
+    async function loadStatistics() {
+      try {
+        const s = await fetchAdminStatistics();
+        const entries = [["Seekers", s.seekers], ["Employers", s.employers], ["Jobs", s.jobs], ["Open jobs", s.open_jobs], ["Applications", s.applications], ["Pending reviews", s.pending_verifications], ["Verified", s.verified_employers]];
+        document.getElementById("statistics").innerHTML = entries.map(([label, value]) => `<div class="entry-card" style="min-width:115px"><div class="entry-title">${value}</div><div class="entry-subtitle">${label}</div></div>`).join("");
+        document.getElementById("pendingCount").textContent = `${s.pending_verifications} pending`;
+      } catch (err) {
+        document.getElementById("statistics").innerHTML = `<p class="status-msg error">${escapeHtml(err.message)}</p>`;
+      }
     }
 
     async function loadSeekers() {
@@ -93,7 +118,7 @@
     async function loadEmployers() {
       const el = document.getElementById("employersList");
       try {
-        const employers = await fetchAdminEmployers();
+        const employers = await fetchAdminEmployers(document.getElementById("employerSearch").value.trim(), document.getElementById("verificationFilter").value);
         el.innerHTML = employers.length === 0
           ? `<p class="subtitle" style="font-size:0.88rem;">No employer accounts yet.</p>`
           : employers.map(employerRowHtml).join("");
@@ -137,6 +162,29 @@
     }
 
     function wireEmployerButtons() {
+      document.querySelectorAll('button[data-action="details-employer"]').forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          try {
+            const e = await fetchAdminEmployerDetail(btn.dataset.id);
+            alert(`${e.company_name}\nEmail: ${e.email}\nIndustry: ${e.industry || "Not provided"}\nWebsite: ${e.website || "Not provided"}\nSSM: ${e.registration_number || "Not submitted"}\nVerification: ${e.verification_status}${e.rejection_reason ? `\nReason: ${e.rejection_reason}` : ""}`);
+          } catch (err) { alert(err.message); }
+        });
+      });
+      document.querySelectorAll('button[data-action="approve-employer"]').forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          if (!confirm("Approve this employer as verified?")) return;
+          try { await approveEmployerVerification(btn.dataset.id); await Promise.all([loadEmployers(), loadStatistics()]); }
+          catch (err) { alert(err.message); }
+        });
+      });
+      document.querySelectorAll('button[data-action="reject-employer"]').forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const reason = prompt("Reason for rejection:");
+          if (!reason || !reason.trim()) return;
+          try { await rejectEmployerVerification(btn.dataset.id, reason.trim()); await Promise.all([loadEmployers(), loadStatistics()]); }
+          catch (err) { alert(err.message); }
+        });
+      });
       document.querySelectorAll('button[data-action="suspend-employer"]').forEach((btn) => {
         btn.addEventListener("click", async () => {
           setButtonBusy(btn, true, "Working…");
@@ -169,6 +217,9 @@
       });
     }
 
+    document.getElementById("employerSearchBtn").addEventListener("click", loadEmployers);
+    document.getElementById("employerSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") loadEmployers(); });
+    document.getElementById("verificationFilter").addEventListener("change", loadEmployers);
     init();
   </script>
 </body>

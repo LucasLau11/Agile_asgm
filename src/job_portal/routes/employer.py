@@ -26,7 +26,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from job_portal.database import get_db
-from job_portal.models import Application, Job, Notification
+from job_portal.models import Application, Employer, Job, Notification
 from job_portal.routes.auth import require_role
 from job_portal.schemas import EmployerJobOut, JobCreate, JobUpdate
 from job_portal.services.credibility import compute_credibility_score
@@ -186,6 +186,14 @@ def publish_job(
 ) -> EmployerJobOut:
     """Draft -> open. Seekers can now see and apply to this posting."""
     job = _find_job_or_404(db, employer_id, job_id)
+    employer = db.query(Employer).filter(Employer.id == employer_id).first()
+    if not employer or employer.verification_status == "rejected" or (
+        employer.verification_status == "pending" and employer.verification_document_path
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Employer verification must be approved before publishing jobs.",
+        )
     job.status = "open"
     db.commit()
     db.refresh(job)

@@ -133,6 +133,7 @@ db.add_all(
             email="employer1@example.com",
             hashed_password=hash_password(TEST_PASSWORD),
             status="active",
+            verification_status="approved",
         ),
         Employer(
             id=2,
@@ -140,6 +141,7 @@ db.add_all(
             email="employer2@example.com",
             hashed_password=hash_password(TEST_PASSWORD),
             status="active",
+            verification_status="approved",
         ),
         Employer(
             id=3,
@@ -147,6 +149,7 @@ db.add_all(
             email="employer3@example.com",
             hashed_password=hash_password(TEST_PASSWORD),
             status="active",
+            verification_status="approved",
         ),
     ]
 )

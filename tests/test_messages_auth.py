@@ -11,6 +11,13 @@ from job_portal.models import Conversation, Message
 
 
 def _login_new_seeker(client, tag, full_name="Test Seeker"):
+    for index in (1, 2):
+        client.post("/api/auth/register/employer", json={
+            "company_name": f"Contact Employer {tag}-{index}",
+            "email": f"contact-employer-msgauth-{tag}-{index}@example.com",
+            "password": "correcthorse",
+        })
+        client.post("/api/auth/logout")
     client.post("/api/auth/register/seeker", json={
         "full_name": full_name,
         "email": f"seeker-msgauth-{tag}@example.com",
@@ -19,6 +26,13 @@ def _login_new_seeker(client, tag, full_name="Test Seeker"):
 
 
 def _login_new_employer(client, tag, company_name="Test Co"):
+    for index in (1, 2):
+        client.post("/api/auth/register/seeker", json={
+            "full_name": f"Contact Seeker {tag}-{index}",
+            "email": f"contact-seeker-msgauth-{tag}-{index}@example.com",
+            "password": "correcthorse",
+        })
+        client.post("/api/auth/logout")
     client.post("/api/auth/register/employer", json={
         "company_name": company_name,
         "email": f"employer-msgauth-{tag}@example.com",
@@ -55,6 +69,36 @@ def _seed_message(db_session, convo, sender_role, sender_id, body="Hello"):
 def test_send_message_requires_login(client):
     r = client.post("/api/messages", json={"recipient_id": 1, "body": "hi"})
     assert r.status_code == 401
+
+
+def test_message_contacts_are_real_registered_accounts(client):
+    _login_new_employer(client, "realcontact", company_name="Real Contact Sdn Bhd")
+    employer_id = client.get("/api/auth/me").json()["id"]
+    client.post("/api/auth/logout")
+    _login_new_seeker(client, "contactviewer")
+
+    response = client.get("/api/messages/contacts")
+    assert response.status_code == 200
+    assert {contact["id"]: contact["name"] for contact in response.json()}[employer_id] == "Real Contact Sdn Bhd"
+
+
+def test_cannot_message_nonexistent_recipient(client):
+    _login_new_seeker(client, "missingrecipient")
+    response = client.post("/api/messages", json={
+        "recipient_id": 999999, "body": "This must not create an orphan conversation."
+    })
+    assert response.status_code == 404
+
+
+def test_conversation_uses_real_employer_name(client):
+    _login_new_employer(client, "realname", company_name="Database Name Sdn Bhd")
+    employer_id = client.get("/api/auth/me").json()["id"]
+    client.post("/api/auth/logout")
+    _login_new_seeker(client, "realname")
+    client.post("/api/messages", json={"recipient_id": employer_id, "body": "Hello"})
+
+    conversations = client.get("/api/conversations").json()
+    assert conversations[0]["other_party_name"] == "Database Name Sdn Bhd"
 
 
 def test_send_message_uses_session_identity_not_client_supplied(client, db_session):

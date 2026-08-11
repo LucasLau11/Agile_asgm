@@ -307,8 +307,41 @@ function fetchAdminSeekers() {
   return apiFetch(`/api/admin/seekers`);
 }
 
-function fetchAdminEmployers() {
-  return apiFetch(`/api/admin/employers`);
+function fetchAdminEmployers(search = "", verificationStatus = "") {
+  const params = new URLSearchParams();
+  if (search) params.set("search", search);
+  if (verificationStatus) params.set("verification_status", verificationStatus);
+  const query = params.toString();
+  return apiFetch(`/api/admin/employers${query ? `?${query}` : ""}`);
+}
+
+function fetchAdminStatistics() { return apiFetch(`/api/admin/statistics`); }
+function fetchPendingEmployerVerifications() { return apiFetch(`/api/admin/employers/pending`); }
+function fetchAdminEmployerDetail(id) { return apiFetch(`/api/admin/employers/${id}`); }
+function approveEmployerVerification(id) {
+  return apiFetch(`/api/admin/employers/${id}/approve`, { method: "POST" });
+}
+function rejectEmployerVerification(id, reason) {
+  return apiFetch(`/api/admin/employers/${id}/reject`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }),
+  });
+}
+function employerVerificationDocumentUrl(id) {
+  return `/api/admin/employers/${id}/verification-document`;
+}
+
+async function submitEmployerVerificationDocument(registrationNumber, file) {
+  const form = new FormData();
+  form.append("registration_number", registrationNumber);
+  form.append("file", file);
+  const res = await fetch(`/api/employers/me/verification-document`, {
+    method: "POST", credentials: "include", body: form,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || "Document upload failed");
+  }
+  return res.json();
 }
 
 function deleteSeekerAccount(seekerId) {
@@ -564,6 +597,11 @@ function setButtonBusy(button, busy, busyLabel) {
 
 function fetchConversations() {
   return apiFetch(`/api/conversations`);
+}
+
+function fetchMessageContacts(search = "") {
+  const query = search ? `?search=${encodeURIComponent(search)}` : "";
+  return apiFetch(`/api/messages/contacts${query}`);
 }
 
 function fetchConversationMessages(conversationId) {
