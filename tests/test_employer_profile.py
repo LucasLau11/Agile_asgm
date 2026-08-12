@@ -3,7 +3,7 @@ def _login_new_employer(client, tag, company_name="Test Co"):
     same pattern as _login_new_seeker in test_seeker.py."""
     client.post("/api/auth/register/employer", json={
         "company_name": company_name,
-        "email": f"employer-{tag}@example.com",
+        "email": f"employer-{tag}@gmail.com",
         "password": "correcthorse",
     })
 
@@ -15,7 +15,7 @@ def test_get_employer_profile_requires_login(client):
 
 def test_get_employer_profile_rejects_seeker_session(client):
     client.post("/api/auth/register/seeker", json={
-        "full_name": "Not An Employer", "email": "not-employer-1@example.com", "password": "correcthorse",
+        "full_name": "Not An Employer", "email": "not-employer-1@gmail.com", "password": "correcthorse",
     })
     r = client.get("/api/employers/me")
     assert r.status_code == 401

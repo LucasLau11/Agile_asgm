@@ -7,7 +7,7 @@ from job_portal.services.auth import hash_password
 def _register_employer(client, tag="verification"):
     response = client.post("/api/auth/register/employer", json={
         "company_name": "Verified Candidate Sdn Bhd",
-        "email": f"{tag}@example.com",
+        "email": f"{tag}@gmail.com",
         "password": "correcthorse",
     })
     assert response.status_code == 201
@@ -16,10 +16,10 @@ def _register_employer(client, tag="verification"):
 
 def _login_admin(client, db_session):
     client.post("/api/auth/logout")
-    db_session.add(Admin(email="verification-admin@example.com", hashed_password=hash_password("correcthorse")))
+    db_session.add(Admin(email="verification-admin@gmail.com", hashed_password=hash_password("correcthorse")))
     db_session.commit()
     assert client.post("/api/auth/login", json={
-        "email": "verification-admin@example.com", "password": "correcthorse",
+        "email": "verification-admin@gmail.com", "password": "correcthorse",
     }).status_code == 200
 
 

@@ -7,7 +7,7 @@ def _login_admin(client, db_session, tag="1"):
     exists by design — admins are provisioned via seed_admin.py) and logs in."""
     from job_portal.models import Admin
 
-    email = f"admin-{tag}@example.com"
+    email = f"admin-{tag}@gmail.com"
     db_session.add(Admin(email=email, hashed_password=hash_password("correcthorse")))
     db_session.commit()
     r = client.post("/api/auth/login", json={"email": email, "password": "correcthorse"})
@@ -16,14 +16,14 @@ def _login_admin(client, db_session, tag="1"):
 
 def _register_seeker(client, tag):
     r = client.post("/api/auth/register/seeker", json={
-        "full_name": "Target Seeker", "email": f"seeker-target-{tag}@example.com", "password": "correcthorse",
+        "full_name": "Target Seeker", "email": f"seeker-target-{tag}@gmail.com", "password": "correcthorse",
     })
     return r.json()["id"]
 
 
 def _register_employer(client, tag):
     r = client.post("/api/auth/register/employer", json={
-        "company_name": "Target Co", "email": f"employer-target-{tag}@example.com", "password": "correcthorse",
+        "company_name": "Target Co", "email": f"employer-target-{tag}@gmail.com", "password": "correcthorse",
     })
     return r.json()["id"]
 
@@ -178,7 +178,7 @@ def test_unsuspend_employer_rejects_employer_session(client, db_session):
 
 def test_delete_seeker_removes_account_and_blocks_future_login(client, db_session):
     client.post("/api/auth/register/seeker", json={
-        "full_name": "Doomed Seeker", "email": "doomed-seeker@example.com", "password": "correcthorse",
+        "full_name": "Doomed Seeker", "email": "doomed-seeker@gmail.com", "password": "correcthorse",
     })
     seeker_id = client.get("/api/seekers/me").json()["seeker_id"]
     client.post("/api/auth/logout")
@@ -189,7 +189,7 @@ def test_delete_seeker_removes_account_and_blocks_future_login(client, db_sessio
     client.post("/api/auth/logout")
 
     login_attempt = client.post("/api/auth/login", json={
-        "email": "doomed-seeker@example.com", "password": "correcthorse",
+        "email": "doomed-seeker@gmail.com", "password": "correcthorse",
     })
     assert login_attempt.status_code == 401
 
@@ -206,7 +206,7 @@ def test_delete_seeker_invalidates_their_current_session(client, db_session):
     from job_portal.models import Session as SessionModel
 
     client.post("/api/auth/register/seeker", json={
-        "full_name": "Live Session Seeker", "email": "live-session@example.com", "password": "correcthorse",
+        "full_name": "Live Session Seeker", "email": "live-session@gmail.com", "password": "correcthorse",
     })
     seeker_id = client.get("/api/seekers/me").json()["seeker_id"]
     assert db_session.query(SessionModel).filter(
@@ -248,7 +248,7 @@ def test_delete_seeker_does_not_affect_other_seekers(client, db_session):
 
 def test_delete_employer_removes_account_and_blocks_future_login(client, db_session):
     client.post("/api/auth/register/employer", json={
-        "company_name": "Doomed Co", "email": "doomed-employer@example.com", "password": "correcthorse",
+        "company_name": "Doomed Co", "email": "doomed-employer@gmail.com", "password": "correcthorse",
     })
     employer_id = client.get("/api/auth/me").json()["id"]
     client.post("/api/auth/logout")
@@ -259,7 +259,7 @@ def test_delete_employer_removes_account_and_blocks_future_login(client, db_sess
     client.post("/api/auth/logout")
 
     login_attempt = client.post("/api/auth/login", json={
-        "email": "doomed-employer@example.com", "password": "correcthorse",
+        "email": "doomed-employer@gmail.com", "password": "correcthorse",
     })
     assert login_attempt.status_code == 401
 
@@ -276,7 +276,7 @@ def test_delete_employer_nonexistent_returns_404(client, db_session):
 
 def test_suspend_seeker_blocks_login(client, db_session):
     client.post("/api/auth/register/seeker", json={
-        "full_name": "Suspended Seeker", "email": "suspended-seeker@example.com", "password": "correcthorse",
+        "full_name": "Suspended Seeker", "email": "suspended-seeker@gmail.com", "password": "correcthorse",
     })
     seeker_id = client.get("/api/seekers/me").json()["seeker_id"]
     client.post("/api/auth/logout")
@@ -288,7 +288,7 @@ def test_suspend_seeker_blocks_login(client, db_session):
     client.post("/api/auth/logout")
 
     login_attempt = client.post("/api/auth/login", json={
-        "email": "suspended-seeker@example.com", "password": "correcthorse",
+        "email": "suspended-seeker@gmail.com", "password": "correcthorse",
     })
     assert login_attempt.status_code == 403
 
@@ -303,7 +303,7 @@ def test_suspend_seeker_invalidates_current_session(client, db_session):
     from job_portal.models import Session as SessionModel
 
     client.post("/api/auth/register/seeker", json={
-        "full_name": "Live Suspend Target", "email": "live-suspend@example.com", "password": "correcthorse",
+        "full_name": "Live Suspend Target", "email": "live-suspend@gmail.com", "password": "correcthorse",
     })
     seeker_id = client.get("/api/seekers/me").json()["seeker_id"]
     assert db_session.query(SessionModel).filter(
@@ -321,7 +321,7 @@ def test_suspend_seeker_invalidates_current_session(client, db_session):
 
 def test_unsuspend_seeker_allows_login_again(client, db_session):
     client.post("/api/auth/register/seeker", json={
-        "full_name": "Reinstated Seeker", "email": "reinstated-seeker@example.com", "password": "correcthorse",
+        "full_name": "Reinstated Seeker", "email": "reinstated-seeker@gmail.com", "password": "correcthorse",
     })
     seeker_id = client.get("/api/seekers/me").json()["seeker_id"]
     client.post("/api/auth/logout")
@@ -334,7 +334,7 @@ def test_unsuspend_seeker_allows_login_again(client, db_session):
     client.post("/api/auth/logout")
 
     login_attempt = client.post("/api/auth/login", json={
-        "email": "reinstated-seeker@example.com", "password": "correcthorse",
+        "email": "reinstated-seeker@gmail.com", "password": "correcthorse",
     })
     assert login_attempt.status_code == 200
 
@@ -345,7 +345,7 @@ def test_unsuspend_seeker_allows_login_again(client, db_session):
 
 def test_suspend_employer_blocks_login(client, db_session):
     client.post("/api/auth/register/employer", json={
-        "company_name": "Suspended Co", "email": "suspended-employer@example.com", "password": "correcthorse",
+        "company_name": "Suspended Co", "email": "suspended-employer@gmail.com", "password": "correcthorse",
     })
     employer_id = client.get("/api/auth/me").json()["id"]
     client.post("/api/auth/logout")
@@ -357,14 +357,14 @@ def test_suspend_employer_blocks_login(client, db_session):
     client.post("/api/auth/logout")
 
     login_attempt = client.post("/api/auth/login", json={
-        "email": "suspended-employer@example.com", "password": "correcthorse",
+        "email": "suspended-employer@gmail.com", "password": "correcthorse",
     })
     assert login_attempt.status_code == 403
 
 
 def test_unsuspend_employer_allows_login_again(client, db_session):
     client.post("/api/auth/register/employer", json={
-        "company_name": "Reinstated Co", "email": "reinstated-employer@example.com", "password": "correcthorse",
+        "company_name": "Reinstated Co", "email": "reinstated-employer@gmail.com", "password": "correcthorse",
     })
     employer_id = client.get("/api/auth/me").json()["id"]
     client.post("/api/auth/logout")
@@ -377,7 +377,7 @@ def test_unsuspend_employer_allows_login_again(client, db_session):
     client.post("/api/auth/logout")
 
     login_attempt = client.post("/api/auth/login", json={
-        "email": "reinstated-employer@example.com", "password": "correcthorse",
+        "email": "reinstated-employer@gmail.com", "password": "correcthorse",
     })
     assert login_attempt.status_code == 200
 
@@ -393,7 +393,7 @@ def test_list_seekers_returns_expected_shape(client, db_session):
     r = client.get("/api/admin/seekers")
     assert r.status_code == 200
     body = r.json()
-    assert any(s["email"] == "seeker-target-shape@example.com" for s in body)
+    assert any(s["email"] == "seeker-target-shape@gmail.com" for s in body)
     assert all("status" in s for s in body)
 
 
@@ -404,7 +404,7 @@ def test_list_employers_returns_expected_shape(client, db_session):
     r = client.get("/api/admin/employers")
     assert r.status_code == 200
     body = r.json()
-    assert any(e["email"] == "employer-target-shape@example.com" for e in body)
+    assert any(e["email"] == "employer-target-shape@gmail.com" for e in body)
     assert all("status" in e for e in body)
 
 
@@ -426,7 +426,7 @@ def test_deleted_seekers_data_is_not_inherited_by_id_reuse(client, db_session):
     db_session.refresh(job)
 
     client.post("/api/auth/register/seeker", json={
-        "full_name": "About To Be Deleted", "email": "reuse-victim@example.com", "password": "correcthorse",
+        "full_name": "About To Be Deleted", "email": "reuse-victim@gmail.com", "password": "correcthorse",
     })
     victim_id = client.get("/api/seekers/me").json()["seeker_id"]
     client.post("/apply", data={"job_id": job.id, "cover_letter": "Hire me"})
@@ -442,7 +442,7 @@ def test_deleted_seekers_data_is_not_inherited_by_id_reuse(client, db_session):
     # seeker happens to get the deleted victim's old id, they must NOT
     # inherit the victim's application data.
     client.post("/api/auth/register/seeker", json={
-        "full_name": "New Registrant", "email": "reuse-newcomer@example.com", "password": "correcthorse",
+        "full_name": "New Registrant", "email": "reuse-newcomer@gmail.com", "password": "correcthorse",
     })
     new_seeker_id = client.get("/api/seekers/me").json()["seeker_id"]
     if new_seeker_id == victim_id:
@@ -455,7 +455,7 @@ def test_deleted_employers_jobs_are_removed_not_left_public(client, db_session):
     remove their job postings, not leave them live on the public board.
     """
     client.post("/api/auth/register/employer", json={
-        "company_name": "Doomed Job Poster", "email": "doomed-poster@example.com", "password": "correcthorse",
+        "company_name": "Doomed Job Poster", "email": "doomed-poster@gmail.com", "password": "correcthorse",
     })
     employer_id = client.get("/api/auth/me").json()["id"]
     from job_portal.models import Job
@@ -487,13 +487,13 @@ def test_deleting_seeker_removes_their_interview_invites_not_just_messages(clien
     from job_portal.models import Conversation, InterviewInvite, Message
 
     client.post("/api/auth/register/seeker", json={
-        "full_name": "Interview Target", "email": "interview-target@example.com", "password": "correcthorse",
+        "full_name": "Interview Target", "email": "interview-target@gmail.com", "password": "correcthorse",
     })
     seeker_id = client.get("/api/seekers/me").json()["seeker_id"]
     client.post("/api/auth/logout")
 
     client.post("/api/auth/register/employer", json={
-        "company_name": "Interviewer Co", "email": "interviewer-co@example.com", "password": "correcthorse",
+        "company_name": "Interviewer Co", "email": "interviewer-co@gmail.com", "password": "correcthorse",
     })
     employer_id = client.get("/api/auth/me").json()["id"]
 

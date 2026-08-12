@@ -10,7 +10,7 @@ def _login_new_seeker(client, tag, full_name="Test Seeker"):
     only needs to be unique per test (it becomes part of the email)."""
     client.post("/api/auth/register/seeker", json={
         "full_name": full_name,
-        "email": f"seeker-{tag}@example.com",
+        "email": f"seeker-{tag}@gmail.com",
         "password": "correcthorse",
     })
 
@@ -572,12 +572,12 @@ def test_update_profile_info(client):
     _login_new_seeker(client, "60")
     r = client.put(
         "/api/seekers/me",
-        json={"full_name": "Jane Doe", "email": "jane-profile-update@test.com", "phone": "012-3456789", "bio": "Hello."},
+        json={"full_name": "Jane Doe", "email": "jane-profile-update@gmail.com", "phone": "012-3456789", "bio": "Hello."},
     )
     assert r.status_code == 200
     body = r.json()
     assert body["full_name"] == "Jane Doe"
-    assert body["email"] == "jane-profile-update@test.com"
+    assert body["email"] == "jane-profile-update@gmail.com"
 
 
 def test_add_and_delete_experience(client):
@@ -724,7 +724,7 @@ def test_profile_info_rejects_name_with_digits(client):
     _login_new_seeker(client, "76")
     r = client.put(
         "/api/seekers/me",
-        json={"full_name": "Jane2 Doe", "email": "jane76@test.com", "phone": "012-3456789"},
+        json={"full_name": "Jane2 Doe", "email": "jane76@gmail.com", "phone": "012-3456789"},
     )
     assert r.status_code == 422
 
@@ -738,7 +738,7 @@ def test_profile_info_rejects_phone_with_letters(client):
     _login_new_seeker(client, "77")
     r = client.put(
         "/api/seekers/me",
-        json={"full_name": "Jane Doe", "email": "jane77@test.com", "phone": "012-EXAMPLE"},
+        json={"full_name": "Jane Doe", "email": "jane77@gmail.com", "phone": "012-EXAMPLE"},
     )
     assert r.status_code == 422
 
@@ -797,7 +797,7 @@ def test_parse_extracts_multiple_experience_entries(client):
     """
     _login_new_seeker(client, "80")
     pdf_bytes = _make_pdf_bytes([
-        "Test Person", "test@example.com",
+        "Test Person", "test@gmail.com",
         "EXPERIENCE",
         "Junior Developer, TechCo",
         "Jan 2023 - Present",
@@ -832,7 +832,7 @@ def test_parse_extracts_education_entry(client):
     """
     _login_new_seeker(client, "81b")
     pdf_bytes = _make_pdf_bytes([
-        "Test Person", "test@example.com",
+        "Test Person", "test@gmail.com",
         "EDUCATION",
         "Test University",
         "Bachelor of Science in Computer Science",
@@ -855,7 +855,7 @@ def test_parse_resume_with_no_experience_section_returns_empty_list(client):
     Then experience is an empty list, not an error
     """
     _login_new_seeker(client, "82")
-    pdf_bytes = _make_pdf_bytes(["Test Person", "test@example.com", "SKILLS", "Python, SQL"])
+    pdf_bytes = _make_pdf_bytes(["Test Person", "test@gmail.com", "SKILLS", "Python, SQL"])
     client.post("/api/seekers/me/resume", files={"file": ("resume.pdf", io.BytesIO(pdf_bytes), "application/pdf")})
 
     r = client.get("/api/seekers/me/resume/parse")
@@ -880,7 +880,7 @@ def test_seeker_endpoint_rejects_employer_session(client):
     Then they get 401 — the seeker-only endpoints aren't for them
     """
     client.post("/api/auth/register/employer", json={
-        "company_name": "Some Co", "email": "not-a-seeker@example.com", "password": "correcthorse",
+        "company_name": "Some Co", "email": "not-a-seeker@gmail.com", "password": "correcthorse",
     })
     r = client.get("/api/seekers/me")
     assert r.status_code == 401
@@ -950,7 +950,7 @@ def test_cannot_delete_another_seekers_experience(client):
     # Log back into A's own account (not a new registration) and confirm
     # the entry is still there, untouched by B's attempt.
     login_res = client.post("/api/auth/login", json={
-        "email": "seeker-delOwnerA@example.com", "password": "correcthorse",
+        "email": "seeker-delOwnerA@gmail.com", "password": "correcthorse",
     })
     assert login_res.status_code == 200
     me = client.get("/api/seekers/me")
@@ -983,7 +983,7 @@ def test_applications_fragment_rejects_employer_session(client):
     Then they get 401 — same role check as every other seeker-only endpoint
     """
     client.post("/api/auth/register/employer", json={
-        "company_name": "Some Co", "email": "not-a-seeker-frag@example.com", "password": "correcthorse",
+        "company_name": "Some Co", "email": "not-a-seeker-frag@gmail.com", "password": "correcthorse",
     })
     r = client.get("/my-applications-fragment")
     assert r.status_code == 401
@@ -1001,7 +1001,7 @@ def test_update_profile_rejects_email_already_used_by_another_account(client):
     _login_new_seeker(client, "emailOwnerB", full_name="Email Owner B")
     r = client.put("/api/seekers/me", json={
         "full_name": "Email Owner B",
-        "email": "seeker-emailOwnerA@example.com",
+        "email": "seeker-emailOwnerA@gmail.com",
         "phone": "012-3456789",
     })
     assert r.status_code == 409
@@ -1017,7 +1017,7 @@ def test_update_profile_allows_keeping_same_email(client):
     _login_new_seeker(client, "sameEmail", full_name="Same Email Seeker")
     r = client.put("/api/seekers/me", json={
         "full_name": "Same Email Seeker Updated",
-        "email": "seeker-sameEmail@example.com",
+        "email": "seeker-sameEmail@gmail.com",
         "phone": "012-3456789",
     })
     assert r.status_code == 200
@@ -1039,7 +1039,7 @@ def test_apply_page_loads_for_logged_in_seeker(client, sample_job):
 
 def test_apply_page_rejects_employer_session(client, sample_job):
     client.post("/api/auth/register/employer", json={
-        "company_name": "Some Co", "email": "not-a-seeker-apply@example.com", "password": "correcthorse",
+        "company_name": "Some Co", "email": "not-a-seeker-apply@gmail.com", "password": "correcthorse",
     })
     r = client.get(f"/apply?job_id={sample_job.id}", follow_redirects=False)
     assert r.status_code == 303

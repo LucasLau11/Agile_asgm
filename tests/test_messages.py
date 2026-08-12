@@ -47,14 +47,14 @@ def _login_new_seeker(client, tag, full_name="Test Seeker"):
     for index in (1, 2):
         response = client.post("/api/auth/register/employer", json={
             "company_name": f"Contact Employer {tag}-{index}",
-            "email": f"contact-employer-{tag}-{index}@example.com",
+            "email": f"contact-employer-{tag}-{index}@gmail.com",
             "password": "correcthorse",
         })
         assert response.status_code == 201, response.text
         client.post("/api/auth/logout")
     client.post("/api/auth/register/seeker", json={
         "full_name": full_name,
-        "email": f"seeker-{tag}@example.com",
+        "email": f"seeker-{tag}@gmail.com",
         "password": "correcthorse",
     })
 
@@ -64,14 +64,14 @@ def _login_new_employer(client, tag, company_name="Test Co"):
     for index, word in ((1, "One"), (2, "Two")):
         response = client.post("/api/auth/register/seeker", json={
             "full_name": f"Contact Seeker {word}",
-            "email": f"contact-seeker-{tag}-{index}@example.com",
+            "email": f"contact-seeker-{tag}-{index}@gmail.com",
             "password": "correcthorse",
         })
         assert response.status_code == 201, response.text
         client.post("/api/auth/logout")
     response = client.post("/api/auth/register/employer", json={
         "company_name": company_name,
-        "email": f"employer-{tag}@example.com",
+        "email": f"employer-{tag}@gmail.com",
         "password": "correcthorse",
     })
     assert response.status_code == 201, response.text
@@ -171,11 +171,11 @@ def test_conversation_is_reused_across_messages(client):
     employer_id = client.get("/api/auth/me").json()["id"]
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-reuse1@example.com")
+    _login(client, "seeker-reuse1@gmail.com")
     first = _send(client, employer_id, "Hello!").json()
     client.post("/api/auth/logout")
 
-    _login(client, "employer-reuse1@example.com")
+    _login(client, "employer-reuse1@gmail.com")
     second = _send(client, seeker_id, "Hi there!").json()
 
     assert first["conversation_id"] == second["conversation_id"]
@@ -203,7 +203,7 @@ def test_seeker_sees_conversation_in_inbox(client):
     _send(client, seeker_id, "We reviewed your application.")
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-inbox1@example.com")
+    _login(client, "seeker-inbox1@gmail.com")
     r = client.get("/api/conversations")
     assert r.status_code == 200
     conversations = r.json()
@@ -226,15 +226,15 @@ def test_seeker_can_read_full_thread(client):
     employer_id = client.get("/api/auth/me").json()["id"]
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-thread1@example.com")
+    _login(client, "seeker-thread1@gmail.com")
     _send(client, employer_id, "Question 1")
     client.post("/api/auth/logout")
 
-    _login(client, "employer-thread1@example.com")
+    _login(client, "employer-thread1@gmail.com")
     _send(client, seeker_id, "Answer 1")
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-thread1@example.com")
+    _login(client, "seeker-thread1@gmail.com")
     convo_id = client.get("/api/conversations").json()[0]["id"]
 
     r = client.get(f"/api/conversations/{convo_id}/messages")
@@ -257,7 +257,7 @@ def test_opening_thread_marks_incoming_messages_read(client):
     _send(client, seeker_id, "Are you still interested?")
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-unread1@example.com")
+    _login(client, "seeker-unread1@gmail.com")
     convo_id = client.get("/api/conversations").json()[0]["id"]
     before = client.get("/api/conversations").json()[0]
     assert before["unread_count"] == 1
@@ -306,11 +306,11 @@ def test_employer_sees_conversation_in_inbox(client):
     employer_id = client.get("/api/auth/me").json()["id"]
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-employerinbox1@example.com")
+    _login(client, "seeker-employerinbox1@gmail.com")
     _send(client, employer_id, "Can you tell me more about the role?")
     client.post("/api/auth/logout")
 
-    _login(client, "employer-employerinbox1@example.com")
+    _login(client, "employer-employerinbox1@gmail.com")
     r = client.get("/api/conversations")
     assert r.status_code == 200
     conversations = r.json()
@@ -336,13 +336,13 @@ def test_employer_inbox_scoped_to_own_conversations(client):
     employer_b_id = client.get("/api/auth/me").json()["id"]
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-employerscoped1@example.com")
+    _login(client, "seeker-employerscoped1@gmail.com")
     seeker_id = client.get("/api/seekers/me").json()["seeker_id"]
     _send(client, employer_a_id, "Message to employer A")
     _send(client, employer_b_id, "Message to employer B")
     client.post("/api/auth/logout")
 
-    _login(client, "employer-employerscopedB@example.com")
+    _login(client, "employer-employerscopedB@gmail.com")
     r = client.get("/api/conversations")
     conversations = r.json()
     assert len(conversations) == 1
@@ -374,17 +374,17 @@ def test_sending_message_notifies_recipient_not_sender(client):
     employer_id = client.get("/api/auth/me").json()["id"]
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-notifmsgseeker@example.com")
+    _login(client, "seeker-notifmsgseeker@gmail.com")
     _send(client, employer_id, "Quick question about the role.")
     client.post("/api/auth/logout")
 
-    _login(client, "employer-notifmsgemployer@example.com")
+    _login(client, "employer-notifmsgemployer@gmail.com")
     employer_notifs = client.get("/api/notifications").json()
     assert len(employer_notifs) == 1
     assert "message" in employer_notifs[0]["title"].lower()
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-notifmsgseeker@example.com")
+    _login(client, "seeker-notifmsgseeker@gmail.com")
     seeker_notifs = client.get("/api/notifications").json()
     assert seeker_notifs == []
 
@@ -402,11 +402,11 @@ def test_employer_message_notifies_seeker(client):
     seeker_id = client.get("/api/seekers/me").json()["seeker_id"]
     client.post("/api/auth/logout")
 
-    _login(client, "employer-notifmsgemployer2@example.com")
+    _login(client, "employer-notifmsgemployer2@gmail.com")
     _send(client, seeker_id, "You're shortlisted!")
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-notifmsgseeker2@example.com")
+    _login(client, "seeker-notifmsgseeker2@gmail.com")
     seeker_notifs = client.get("/api/notifications").json()
     assert len(seeker_notifs) == 1
 
@@ -533,7 +533,7 @@ def test_delete_for_me_hides_only_for_requester(client):
     convo_id = sent["conversation_id"]
     client.post("/api/auth/logout")
 
-    _login(client, "employer-delme1@example.com")
+    _login(client, "employer-delme1@gmail.com")
     r = client.delete(f"/api/messages/{sent['id']}?scope=me")
     assert r.status_code == 200
 
@@ -541,7 +541,7 @@ def test_delete_for_me_hides_only_for_requester(client):
     assert employer_view.json()["messages"] == []
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-delme1@example.com")
+    _login(client, "seeker-delme1@gmail.com")
     seeker_view = client.get(f"/api/conversations/{convo_id}/messages")
     assert len(seeker_view.json()["messages"]) == 1
 
@@ -566,8 +566,8 @@ def test_delete_for_everyone_shows_placeholder_to_both(client):
     client.post("/api/auth/logout")
 
     for email in [
-        "seeker-deleverybody1@example.com",
-        "employer-deleverybody1@example.com",
+        "seeker-deleverybody1@gmail.com",
+        "employer-deleverybody1@gmail.com",
     ]:
         _login(client, email)
         thread = client.get(f"/api/conversations/{convo_id}/messages")
@@ -591,7 +591,7 @@ def test_only_sender_can_delete_for_everyone(client):
     sent = _send(client, seeker_id, "Careful message").json()
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-delonlysender1@example.com")
+    _login(client, "seeker-delonlysender1@gmail.com")
     r = client.delete(f"/api/messages/{sent['id']}?scope=everyone")
     assert r.status_code == 403
 
@@ -610,7 +610,7 @@ def test_recipient_can_delete_received_message_for_me(client):
     sent = _send(client, seeker_id, "Some message").json()
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-delrecipient1@example.com")
+    _login(client, "seeker-delrecipient1@gmail.com")
     r = client.delete(f"/api/messages/{sent['id']}?scope=me")
     assert r.status_code == 200
 
@@ -709,7 +709,7 @@ def test_conversation_preview_shows_attachment_indicator(client):
     assert _send_attachment.status_code == 200
     client.post("/api/auth/logout")
 
-    _login(client, "employer-attachpreview1@example.com")
+    _login(client, "employer-attachpreview1@gmail.com")
     r = client.get("/api/conversations")
     assert "📎" in r.json()[0]["last_message_preview"]
 
@@ -761,7 +761,7 @@ def test_authorized_participant_can_fetch_decrypted_attachment(client):
     ).json()
     client.post("/api/auth/logout")
 
-    _login(client, "employer-attachfetch1@example.com")
+    _login(client, "employer-attachfetch1@gmail.com")
     r = client.get(f"/api/messages/{sent['id']}/attachment")
     assert r.status_code == 200
     assert r.content == _PNG_1PX
@@ -817,7 +817,7 @@ def test_seeker_can_block_and_unblock_an_employer(client):
     assert seeker_thread.json()["blocked_by_me"] is True
     client.post("/api/auth/logout")
 
-    _login(client, "employer-block1@example.com")
+    _login(client, "employer-block1@gmail.com")
     employer_thread = client.get(f"/api/conversations/{convo_id}/messages")
     assert employer_thread.json()["is_blocked"] is True
     assert employer_thread.json()["blocked_by_me"] is False
@@ -826,13 +826,13 @@ def test_seeker_can_block_and_unblock_an_employer(client):
     assert rejected.status_code == 403
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-block1@example.com")
+    _login(client, "seeker-block1@gmail.com")
     unblocked = client.delete(f"/api/conversations/{convo_id}/block")
     assert unblocked.status_code == 200
     assert unblocked.json()["is_blocked"] is False
     client.post("/api/auth/logout")
 
-    _login(client, "employer-block1@example.com")
+    _login(client, "employer-block1@gmail.com")
     assert _send(client, seeker_id, "Thanks").status_code == 200
 
 
@@ -847,11 +847,11 @@ def test_employer_can_block_a_seeker_and_block_prevents_attachments(client):
     convo_id = sent["conversation_id"]
     client.post("/api/auth/logout")
 
-    _login(client, "employer-blockattach1@example.com")
+    _login(client, "employer-blockattach1@gmail.com")
     assert client.post(f"/api/conversations/{convo_id}/block").status_code == 200
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-blockattach1@example.com")
+    _login(client, "seeker-blockattach1@gmail.com")
     attachment = client.post(
         "/api/messages/attachment",
         data={"recipient_id": employer_id, "body": ""},
@@ -891,7 +891,7 @@ def test_delete_conversation_hides_it_only_for_requester(client):
     assert seeker_inbox == []
     client.post("/api/auth/logout")
 
-    _login(client, "employer-delconvo1@example.com")
+    _login(client, "employer-delconvo1@gmail.com")
     employer_inbox = client.get("/api/conversations").json()
     assert len(employer_inbox) == 1
 
@@ -915,11 +915,11 @@ def test_deleted_conversation_reappears_on_new_message(client):
     assert client.get("/api/conversations").json() == []
     client.post("/api/auth/logout")
 
-    _login(client, "employer-delconvoreappear1@example.com")
+    _login(client, "employer-delconvoreappear1@gmail.com")
     _send(client, seeker_id, "Following up")
     client.post("/api/auth/logout")
 
-    _login(client, "seeker-delconvoreappear1@example.com")
+    _login(client, "seeker-delconvoreappear1@gmail.com")
     seeker_inbox = client.get("/api/conversations").json()
     assert len(seeker_inbox) == 1
 

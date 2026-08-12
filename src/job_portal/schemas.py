@@ -84,6 +84,26 @@ def _validate_date_field(value: Optional[str]) -> str:
     return value
 
 
+ALLOWED_EMAIL_DOMAINS = {"gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com"}
+
+
+def _validate_registration_email(value: str) -> str:
+    value = (value or "").strip().lower()
+    if not value:
+        raise ValueError("Email is required.")
+    from email_validator import EmailNotValidError, validate_email
+
+    try:
+        info = validate_email(value, check_deliverability=False)
+    except EmailNotValidError:
+        raise ValueError("Must be a valid email address, e.g. name@example.com")
+    if info.domain.lower() not in ALLOWED_EMAIL_DOMAINS:
+        raise ValueError(
+            "Please register with an email from Gmail, Yahoo, Outlook, Hotmail, or iCloud."
+        )
+    return value
+
+
 class JobOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -458,16 +478,7 @@ class SeekerRegisterIn(BaseModel):
     @field_validator("email")
     @classmethod
     def _validate_email_format(cls, value: str) -> str:
-        value = (value or "").strip().lower()
-        if not value:
-            raise ValueError("Email is required.")
-        from email_validator import EmailNotValidError, validate_email
-
-        try:
-            validate_email(value, check_deliverability=False)
-        except EmailNotValidError:
-            raise ValueError("Must be a valid email address, e.g. name@example.com")
-        return value
+        return _validate_registration_email(value)
 
 
 class EmployerRegisterIn(BaseModel):
@@ -488,16 +499,7 @@ class EmployerRegisterIn(BaseModel):
     @field_validator("email")
     @classmethod
     def _validate_email_format(cls, value: str) -> str:
-        value = (value or "").strip().lower()
-        if not value:
-            raise ValueError("Email is required.")
-        from email_validator import EmailNotValidError, validate_email
-
-        try:
-            validate_email(value, check_deliverability=False)
-        except EmailNotValidError:
-            raise ValueError("Must be a valid email address, e.g. name@example.com")
-        return value
+        return _validate_registration_email(value)
 
 
 class EmployerProfileOut(BaseModel):

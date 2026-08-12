@@ -4,7 +4,7 @@ from job_portal.models import Application, Job
 def _login_new_employer(client, tag, company_name="Test Co"):
     client.post("/api/auth/register/employer", json={
         "company_name": company_name,
-        "email": f"employer-{tag}@example.com",
+        "email": f"employer-{tag}@gmail.com",
         "password": "correcthorse",
     })
 
@@ -12,7 +12,7 @@ def _login_new_employer(client, tag, company_name="Test Co"):
 def _login_new_seeker(client, tag, full_name="Test Seeker"):
     client.post("/api/auth/register/seeker", json={
         "full_name": full_name,
-        "email": f"seeker-{tag}@example.com",
+        "email": f"seeker-{tag}@gmail.com",
         "password": "correcthorse",
     })
 
@@ -34,7 +34,7 @@ def _seed_application(db_session, employer_id, tag="A"):
         skills="Python",
         status="Applied",
         applied_date="1 January 2026",
-        email="applicant@example.com",
+        email="applicant@gmail.com",
         cover_letter="I would love this role.",
     )
     db_session.add(application)
@@ -77,7 +77,7 @@ def test_employer_applications_scoped_to_own_jobs(client, db_session):
     # Log back into employer A's real account (not a new registration) to
     # check what THEY see.
     r = client.post("/api/auth/login", json={
-        "email": "employer-listA@example.com", "password": "correcthorse",
+        "email": "employer-listA@gmail.com", "password": "correcthorse",
     })
     assert r.status_code == 200
 
@@ -179,7 +179,7 @@ def test_cannot_update_another_employers_applicant(client, db_session):
 
     client.post("/api/auth/logout")
     r = client.post("/api/auth/login", json={
-        "email": "employer-victimEmployer2@example.com", "password": "correcthorse",
+        "email": "employer-victimEmployer2@gmail.com", "password": "correcthorse",
     })
     assert r.status_code == 200
     detail = client.get(f"/api/employer/applicant/{app.id}").json()
@@ -305,7 +305,7 @@ def _seed_admin(db_session, tag="1"):
     from job_portal.models import Admin
     from job_portal.services.auth import hash_password
 
-    email = f"admin-notif-{tag}@example.com"
+    email = f"admin-notif-{tag}@gmail.com"
     db_session.add(Admin(email=email, hashed_password=hash_password("correcthorse")))
     db_session.commit()
     return email

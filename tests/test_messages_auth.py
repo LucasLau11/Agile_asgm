@@ -14,14 +14,14 @@ def _login_new_seeker(client, tag, full_name="Test Seeker"):
     for index in (1, 2):
         response = client.post("/api/auth/register/employer", json={
             "company_name": f"Contact Employer {tag}-{index}",
-            "email": f"contact-employer-msgauth-{tag}-{index}@example.com",
+            "email": f"contact-employer-msgauth-{tag}-{index}@gmail.com",
             "password": "correcthorse",
         })
         assert response.status_code == 201, response.text
         client.post("/api/auth/logout")
     client.post("/api/auth/register/seeker", json={
         "full_name": full_name,
-        "email": f"seeker-msgauth-{tag}@example.com",
+        "email": f"seeker-msgauth-{tag}@gmail.com",
         "password": "correcthorse",
     })
 
@@ -30,14 +30,14 @@ def _login_new_employer(client, tag, company_name="Test Co"):
     for index, word in ((1, "One"), (2, "Two")):
         response = client.post("/api/auth/register/seeker", json={
             "full_name": f"Contact Seeker {word}",
-            "email": f"contact-seeker-msgauth-{tag}-{index}@example.com",
+            "email": f"contact-seeker-msgauth-{tag}-{index}@gmail.com",
             "password": "correcthorse",
         })
         assert response.status_code == 201, response.text
         client.post("/api/auth/logout")
     response = client.post("/api/auth/register/employer", json={
         "company_name": company_name,
-        "email": f"employer-msgauth-{tag}@example.com",
+        "email": f"employer-msgauth-{tag}@gmail.com",
         "password": "correcthorse",
     })
     assert response.status_code == 201, response.text
@@ -185,7 +185,7 @@ def test_non_sender_participant_cannot_delete_for_everyone(client, db_session):
     client.post("/api/auth/logout")
 
     client.post("/api/auth/login", json={
-        "email": "seeker-msgauth-delparticipant@example.com", "password": "correcthorse",
+        "email": "seeker-msgauth-delparticipant@gmail.com", "password": "correcthorse",
     })
     r = client.delete(f"/api/messages/{message.id}?scope=everyone")
     assert r.status_code == 403
@@ -219,7 +219,7 @@ def test_list_conversations_only_shows_own(client, db_session):
     client.post("/api/auth/logout")
 
     client.post("/api/auth/login", json={
-        "email": "employer-msgauth-listother@example.com", "password": "correcthorse",
+        "email": "employer-msgauth-listother@gmail.com", "password": "correcthorse",
     })
     r = client.get("/api/conversations")
     assert r.status_code == 200

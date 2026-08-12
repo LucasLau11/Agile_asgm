@@ -13,7 +13,7 @@ def _login_new_employer(client, tag, company_name="Test Co"):
     mirrors _login_new_seeker in test_seeker.py."""
     client.post("/api/auth/register/employer", json={
         "company_name": company_name,
-        "email": f"employer-{tag}@example.com",
+        "email": f"employer-{tag}@gmail.com",
         "password": "correcthorse",
     })
 
@@ -291,7 +291,7 @@ def test_delete_job_removes_its_applications(client, db_session):
         skills="Python",
         status="Applied",
         applied_date="1 January 2026",
-        email="test@example.com",
+        email="test@gmail.com",
     )
     db_session.add(application)
     db_session.commit()
@@ -324,7 +324,7 @@ def test_deleted_jobs_applicants_are_not_inherited_by_id_reuse(client, db_sessio
         skills="Python",
         status="Applied",
         applied_date="1 January 2026",
-        email="confidential@example.com",
+        email="confidential@gmail.com",
         cover_letter="CONFIDENTIAL",
     )
     db_session.add(application)
@@ -475,7 +475,7 @@ def test_job_auto_closes_when_last_position_offered(client, db_session):
         skills="Python",
         status="Applied",
         applied_date="1 January 2026",
-        email="test@example.com",
+        email="test@gmail.com",
     )
     db_session.add(application)
     db_session.commit()
@@ -516,7 +516,7 @@ def test_job_stays_open_when_positions_remain(client, db_session):
         skills="Python",
         status="Applied",
         applied_date="1 January 2026",
-        email="test@example.com",
+        email="test@gmail.com",
     )
     db_session.add(application)
     db_session.commit()
@@ -541,7 +541,7 @@ def test_list_employer_jobs_requires_login(client):
 
 def test_list_employer_jobs_rejects_seeker_session(client):
     client.post("/api/auth/register/seeker", json={
-        "full_name": "Not An Employer", "email": "not-employer-list@example.com", "password": "correcthorse",
+        "full_name": "Not An Employer", "email": "not-employer-list@gmail.com", "password": "correcthorse",
     })
     r = client.get("/api/employer/jobs")
     assert r.status_code == 401
@@ -559,7 +559,7 @@ def test_create_job_requires_login(client):
 
 def test_create_job_rejects_seeker_session(client):
     client.post("/api/auth/register/seeker", json={
-        "full_name": "Not An Employer", "email": "not-employer-create@example.com", "password": "correcthorse",
+        "full_name": "Not An Employer", "email": "not-employer-create@gmail.com", "password": "correcthorse",
     })
     r = client.post("/api/employer/jobs", json=_valid_payload())
     assert r.status_code == 401
