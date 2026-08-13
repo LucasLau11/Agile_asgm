@@ -57,6 +57,62 @@
       </form>
       <p class="status-msg" id="infoStatus"></p>
     </section>
+
+    <!-- Verification Document -->
+    <section class="profile-section">
+      <h2>Company Verification</h2>
+      <p class="subtitle">Upload your company registration document for verification.</p>
+      <div id="verificationStatus"></div>
+      <form id="verificationForm" novalidate>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="registrationNumberInput">SSM Registration Number *</label>
+          <input type="text" id="registrationNumberInput" placeholder="e.g. 123456789" required />
+          <div class="field-error" id="registrationNumberError"></div>
+        </div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="verificationDocumentInput">Registration Document (PDF or DOCX) *</label>
+          <input type="file" id="verificationDocumentInput" accept=".pdf,.docx" required />
+          <div class="field-error" id="verificationDocumentError"></div>
+        </div>
+        <button type="submit" class="btn btn-primary">Submit for Verification</button>
+      </form>
+      <p class="status-msg" id="verificationFormStatus"></p>
+      <div id="verificationStatusDisplay"></div>
+    </section>
+
+    <!-- Change Password -->
+    <section class="profile-section">
+      <div class="section-header-row">
+        <h2>Change Password</h2>
+      </div>
+      <form id="changePasswordForm" novalidate>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="currentPasswordInput">Current password *</label>
+          <input type="password" id="currentPasswordInput" required />
+          <div class="field-error" id="currentPasswordError"></div>
+        </div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="newPasswordInput">New password *</label>
+          <input type="password" id="newPasswordInput" required />
+          <div class="field-error" id="newPasswordError"></div>
+        </div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="confirmPasswordInput">Confirm new password *</label>
+          <input type="password" id="confirmPasswordInput" required />
+          <div class="field-error" id="confirmPasswordError"></div>
+        </div>
+        <button type="submit" class="btn btn-primary">Change Password</button>
+      </form>
+      <p class="status-msg" id="changePasswordStatus"></p>
+    </section>
+
+    <!-- Delete Account -->
+    <section class="profile-section" style="border-top:1px solid #e0e0e0; margin-top:32px; padding-top:32px;">
+      <h2 style="color:#d32f2f;">Delete Account</h2>
+      <p class="subtitle">Once you delete your account, there is no going back. Please be certain.</p>
+      <button type="button" class="btn btn-secondary" id="deleteAccountBtn" style="background-color:#d32f2f; color:white;">Delete My Account</button>
+      <p class="status-msg" id="deleteAccountStatus"></p>
+    </section>
   </main>
 
   <script src="../js/api.js"></script>
@@ -136,10 +192,195 @@
       }
     });
 
+    // ============================ Verification Document ============================
+
+    function renderVerificationStatus() {
+      const el = document.getElementById("verificationStatusDisplay");
+      if (!profileData.verification_status) {
+        el.innerHTML = `<p class="subtitle" style="font-size:0.88rem;">No verification submitted yet.</p>`;
+        return;
+      }
+
+      const statusColor = {
+        "pending": "#ff9800",
+        "verified": "#4caf50",
+        "rejected": "#f44336"
+      }[profileData.verification_status] || "#999";
+
+      const statusText = {
+        "pending": "Pending Review",
+        "verified": "Verified",
+        "rejected": "Rejected"
+      }[profileData.verification_status] || "Unknown";
+
+      el.innerHTML = `
+        <div style="margin-top:16px; padding:16px; border-radius:8px; background:#f5f5f5; border-left:4px solid ${statusColor};">
+          <div style="color:${statusColor}; font-weight:bold; margin-bottom:8px;">Status: ${escapeHtml(statusText)}</div>
+          ${profileData.verification_document_filename ? `
+            <div style="font-size:0.9rem;">
+              Document: <strong>${escapeHtml(profileData.verification_document_filename)}</strong>
+              ${profileData.verification_submitted_at ? `<br/>Submitted: ${new Date(profileData.verification_submitted_at).toLocaleDateString()}` : ""}
+            </div>
+          ` : ""}
+          ${profileData.rejection_reason ? `
+            <div style="color:#c62828; margin-top:8px;">
+              <strong>Reason for rejection:</strong><br/>${escapeHtml(profileData.rejection_reason)}
+            </div>
+          ` : ""}
+        </div>
+      `;
+    }
+
+    document.getElementById("verificationForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const statusEl = document.getElementById("verificationFormStatus");
+      const regNumError = document.getElementById("registrationNumberError");
+      const docError = document.getElementById("verificationDocumentError");
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+
+      statusEl.textContent = "";
+      statusEl.className = "status-msg";
+      regNumError.textContent = "";
+      docError.textContent = "";
+
+      const registrationNumber = document.getElementById("registrationNumberInput").value.trim();
+      const file = document.getElementById("verificationDocumentInput").files?.[0];
+
+      if (!registrationNumber) {
+        regNumError.textContent = "Registration number is required.";
+        return;
+      }
+
+      if (!file) {
+        docError.textContent = "Please select a document.";
+        return;
+      }
+
+      const lowerName = file.name.toLowerCase();
+      if (!lowerName.endsWith(".pdf") && !lowerName.endsWith(".docx")) {
+        docError.textContent = "Only PDF or DOCX files are accepted.";
+        return;
+      }
+
+      setButtonBusy(submitBtn, true, "Uploading…");
+      try {
+        profileData = await submitEmployerVerificationDocument(registrationNumber, file);
+        renderVerificationStatus();
+        statusEl.textContent = "Document submitted for verification.";
+        statusEl.className = "status-msg success";
+        e.target.reset();
+      } catch (err) {
+        statusEl.textContent = `Upload failed: ${err.message}`;
+        statusEl.className = "status-msg error";
+      } finally {
+        setButtonBusy(submitBtn, false);
+      }
+    });
+
+    // ============================ Change Password ============================
+
+    document.getElementById("changePasswordForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const statusEl = document.getElementById("changePasswordStatus");
+      const currentPasswordError = document.getElementById("currentPasswordError");
+      const newPasswordError = document.getElementById("newPasswordError");
+      const confirmPasswordError = document.getElementById("confirmPasswordError");
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+
+      statusEl.textContent = "";
+      statusEl.className = "status-msg";
+      currentPasswordError.textContent = "";
+      newPasswordError.textContent = "";
+      confirmPasswordError.textContent = "";
+
+      const currentPassword = document.getElementById("currentPasswordInput").value;
+      const newPassword = document.getElementById("newPasswordInput").value;
+      const confirmPassword = document.getElementById("confirmPasswordInput").value;
+
+      let valid = true;
+
+      if (!currentPassword) {
+        currentPasswordError.textContent = "Current password is required.";
+        valid = false;
+      }
+
+      if (!newPassword) {
+        newPasswordError.textContent = "New password is required.";
+        valid = false;
+      } else if (newPassword.length < 8) {
+        newPasswordError.textContent = "Password must be at least 8 characters.";
+        valid = false;
+      } else if (newPassword === currentPassword) {
+        newPasswordError.textContent = "New password must be different from current password.";
+        valid = false;
+      }
+
+      if (!confirmPassword) {
+        confirmPasswordError.textContent = "Confirm password is required.";
+        valid = false;
+      } else if (confirmPassword !== newPassword) {
+        confirmPasswordError.textContent = "Passwords do not match.";
+        valid = false;
+      }
+
+      if (!valid) return;
+
+      setButtonBusy(submitBtn, true, "Changing…");
+      try {
+        await changePassword(currentPassword, newPassword);
+        statusEl.textContent = "Password changed successfully.";
+        statusEl.className = "status-msg success";
+        e.target.reset();
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+        statusEl.className = "status-msg error";
+      } finally {
+        setButtonBusy(submitBtn, false);
+      }
+    });
+
+    // ============================ Delete Account ============================
+
+    document.getElementById("deleteAccountBtn").addEventListener("click", async () => {
+      const confirmed = confirm("Are you sure you want to delete your account? This action cannot be undone.");
+      if (!confirmed) return;
+
+      const passwordPrompt = prompt("Please enter your password to confirm account deletion:");
+      if (passwordPrompt === null) return; // User cancelled
+
+      if (!passwordPrompt) {
+        alert("Password is required to delete your account.");
+        return;
+      }
+
+      const statusEl = document.getElementById("deleteAccountStatus");
+      const btn = document.getElementById("deleteAccountBtn");
+
+      setButtonBusy(btn, true, "Deleting…");
+      statusEl.textContent = "";
+      statusEl.className = "status-msg";
+
+      try {
+        await deleteMyAccount(passwordPrompt);
+        statusEl.textContent = "Account deleted. Redirecting to home page…";
+        statusEl.className = "status-msg success";
+        setTimeout(() => {
+          window.location.href = "/UI/html/login.html";
+        }, 2000);
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+        statusEl.className = "status-msg error";
+        setButtonBusy(btn, false);
+      }
+    });
+
+    // ============================ Initial load ============================
+
     async function loadProfile() {
       try {
         profileData = await fetchEmployerProfile();
         renderInfoDisplay();
+        renderVerificationStatus();
       } catch (err) {
         document.getElementById("infoStatus").textContent = `Couldn't load profile: ${err.message}`;
         document.getElementById("infoStatus").className = "status-msg error";

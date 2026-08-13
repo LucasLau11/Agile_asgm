@@ -81,7 +81,7 @@ renderDevUserBar("devUserBar");
           <div class="detail-header" style="margin-top:14px">
             <div>
               <h1>${escapeHtml(job.title)} ${matchBadge}</h1>
-              <p class="subtitle">${escapeHtml(job.employer_name || "Employer")} ${job.employer_verified ? '<span class="skill-tag">✓ Verified employer</span>' : '<span class="skill-tag missing">Unverified employer</span>'}</p>
+              <p class="subtitle"><a href="/UI/html/company_detail.html?id=${job.employer_id}" style="color:inherit; text-decoration:none; border-bottom:1px solid #0066cc; cursor:pointer;">${escapeHtml(job.employer_name || "Employer")}</a> ${job.employer_verified ? '<span class="skill-tag">✓ Verified employer</span>' : '<span class="skill-tag missing">Unverified employer</span>'}</p>
               <p class="subtitle" style="margin-bottom:4px;">
                 ${escapeHtml(job.location || "Location not specified")}
                 &nbsp;•&nbsp; ${escapeHtml(job.job_type || "Full-time")}

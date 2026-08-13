@@ -14,9 +14,10 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from job_portal.database import get_db
-from job_portal.models import Application, Conversation, Employer, InterviewInvite, Job, Message, Notification, SeekerProfile
+from job_portal.models import Application, Employer, Job, SeekerProfile
 from job_portal.routes.auth import require_role
 from job_portal.schemas import AdminEmployerOut, AdminSeekerOut, AdminStatisticsOut, EmployerVerificationDecisionIn
+from job_portal.services.account_deletion import delete_employer_account, delete_seeker_account
 from job_portal.services.auth import delete_sessions_for_account
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -177,36 +178,11 @@ def delete_seeker(
     would keep the most PII-dense artifact in the system reachable via the
     unauthenticated /uploads mount.
     WorkExperience/Education rows cascade-delete separately via the ORM
-    relationship on SeekerProfile."""
+    relationship on SeekerProfile. Cascade logic lives in
+    services/account_deletion.py, shared with the self-service delete
+    endpoint (US-71) in routes/auth.py."""
     seeker = _get_seeker_or_404(db, seeker_id)
-    delete_sessions_for_account(db, "seeker", seeker_id)
-
-    if seeker.resume_url and os.path.exists(seeker.resume_url):
-        os.remove(seeker.resume_url)
-
-    db.query(Application).filter(Application.seeker_id == seeker_id).delete()
-    db.query(Notification).filter(Notification.seeker_id == seeker_id).delete()
-
-    conversation_ids = [
-        c.id for c in db.query(Conversation).filter(Conversation.seeker_id == seeker_id).all()
-    ]
-    if conversation_ids:
-        message_ids = [
-            m_id for (m_id,) in db.query(Message.id)
-            .filter(Message.conversation_id.in_(conversation_ids)).all()
-        ]
-        if message_ids:
-            # Bulk .delete() below bypasses the ORM, so Message's
-            # cascade="all, delete-orphan" relationship to InterviewInvite
-            # never fires — delete these explicitly first, or the orphaned
-            # InterviewInvite row survives keyed to a message_id SQLite
-            # immediately reissues to the next unrelated message.
-            db.query(InterviewInvite).filter(InterviewInvite.message_id.in_(message_ids)).delete(synchronize_session=False)
-        db.query(Message).filter(Message.conversation_id.in_(conversation_ids)).delete(synchronize_session=False)
-        db.query(Conversation).filter(Conversation.seeker_id == seeker_id).delete()
-
-    db.delete(seeker)
-    db.commit()
+    delete_seeker_account(db, seeker)
 
 
 @router.delete("/employers/{employer_id}", status_code=204)
@@ -221,40 +197,10 @@ def delete_employer(
     this INTEGER PRIMARY KEY). This includes the employer's own job
     postings — leaving them live would keep advertising a removed company
     on the public board, and orphaning them would hand them to whichever
-    employer registers next and reuses this id."""
+    employer registers next and reuses this id. Cascade logic lives in
+    services/account_deletion.py."""
     employer = _get_employer_or_404(db, employer_id)
-    delete_sessions_for_account(db, "employer", employer_id)
-
-    if employer.verification_document_path and os.path.exists(employer.verification_document_path):
-        os.remove(employer.verification_document_path)
-
-    job_ids = [j.id for j in db.query(Job).filter(Job.employer_id == employer_id).all()]
-    if job_ids:
-        db.query(Application).filter(Application.job_id.in_(job_ids)).delete(synchronize_session=False)
-        db.query(Job).filter(Job.employer_id == employer_id).delete()
-
-    db.query(Notification).filter(Notification.employer_id == employer_id).delete()
-
-    conversation_ids = [
-        c.id for c in db.query(Conversation).filter(Conversation.employer_id == employer_id).all()
-    ]
-    if conversation_ids:
-        message_ids = [
-            m_id for (m_id,) in db.query(Message.id)
-            .filter(Message.conversation_id.in_(conversation_ids)).all()
-        ]
-        if message_ids:
-            # Bulk .delete() below bypasses the ORM, so Message's
-            # cascade="all, delete-orphan" relationship to InterviewInvite
-            # never fires — delete these explicitly first, or the orphaned
-            # InterviewInvite row survives keyed to a message_id SQLite
-            # immediately reissues to the next unrelated message.
-            db.query(InterviewInvite).filter(InterviewInvite.message_id.in_(message_ids)).delete(synchronize_session=False)
-        db.query(Message).filter(Message.conversation_id.in_(conversation_ids)).delete(synchronize_session=False)
-        db.query(Conversation).filter(Conversation.employer_id == employer_id).delete()
-
-    db.delete(employer)
-    db.commit()
+    delete_employer_account(db, employer)
 
 
 @router.post("/seekers/{seeker_id}/suspend", response_model=AdminSeekerOut)

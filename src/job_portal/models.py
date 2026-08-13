@@ -56,6 +56,24 @@ class SeekerProfile(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # US-68: email confirmation. email_confirmed starts at 0 on
+    # registration; confirmation_token is a one-time opaque value mailed
+    # to the seeker and cleared once used (or regenerated on resend).
+    email_confirmed = Column(Integer, nullable=False, default=0)
+    confirmation_token = Column(String, nullable=True)
+    confirmation_token_expires = Column(DateTime, nullable=True)
+
+    # US-69: forgot-password reset token, same one-time/expiring shape as
+    # confirmation_token above but kept separate so an in-flight password
+    # reset can't be satisfied by replaying an old confirmation link (or
+    # vice versa).
+    reset_token = Column(String, nullable=True)
+    reset_token_expires = Column(DateTime, nullable=True)
+
+    # US-72: profile picture. Mirrors resume_filename/resume_url's shape.
+    profile_picture_filename = Column(String(255), nullable=True)
+    profile_picture_url = Column(String(500), nullable=True)
+
     experience = relationship(
         "WorkExperience", back_populates="profile", cascade="all, delete-orphan"
     )
@@ -265,6 +283,10 @@ class Employer(Base):
     verified_at = Column(DateTime, nullable=True)
     verified_by_admin_id = Column(Integer, nullable=True)
     rejection_reason = Column(Text, nullable=True)
+
+    # US-73: forgot-password reset token, same shape as SeekerProfile's.
+    reset_token = Column(String, nullable=True)
+    reset_token_expires = Column(DateTime, nullable=True)
 
 
 class Admin(Base):

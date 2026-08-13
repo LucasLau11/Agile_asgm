@@ -71,6 +71,25 @@ _ensure_columns(
     },
 )
 _ensure_columns(
+    "seeker_profiles",
+    {
+        "email_confirmed": "INTEGER DEFAULT 0",
+        "confirmation_token": "VARCHAR",
+        "confirmation_token_expires": "DATETIME",
+        "reset_token": "VARCHAR",
+        "reset_token_expires": "DATETIME",
+        "profile_picture_filename": "VARCHAR(255)",
+        "profile_picture_url": "VARCHAR(500)",
+    },
+)
+_ensure_columns(
+    "employers",
+    {
+        "reset_token": "VARCHAR",
+        "reset_token_expires": "DATETIME",
+    },
+)
+_ensure_columns(
     "employers",
     {
         "description": "TEXT",
@@ -100,4 +119,5 @@ app.mount("/UI", StaticFiles(directory="UI"), name="UI")
 
 os.makedirs("uploads/resumes", exist_ok=True)
 os.makedirs("uploads/messages", exist_ok=True)
+os.makedirs("uploads/profile_pictures", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

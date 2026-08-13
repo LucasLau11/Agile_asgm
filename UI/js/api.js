@@ -217,6 +217,10 @@ function fetchJob(jobId, seekerId) {
   return apiFetch(`/api/jobs/${jobId}${query}`);
 }
 
+function fetchCompanyDetail(employerId) {
+  return apiFetch(`/api/companies/${employerId}`);
+}
+
 function fetchSeekerProfile() {
   return apiFetch(`/api/seekers/me`);
 }
@@ -265,6 +269,24 @@ async function uploadResume(file) {
   const formData = new FormData();
   formData.append("file", file);
   const res = await fetch(`${API_BASE}/api/seekers/me/resume`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const detail = Array.isArray(body.detail)
+      ? body.detail.map((d) => d.msg || JSON.stringify(d)).join("; ")
+      : body.detail;
+    throw new Error(detail || "Upload failed");
+  }
+  return res.json();
+}
+
+async function uploadProfilePicture(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_BASE}/api/seekers/me/profile-picture`, {
     method: "POST",
     credentials: "include",
     body: formData,
@@ -516,6 +538,34 @@ function registerEmployer(companyName, email, password) {
 
 function loginAccount(email, password) {
   return _authFetch("/api/auth/login", { email, password });
+}
+
+function requestPasswordReset(email) {
+  return _authFetch("/api/auth/forgot-password", { email });
+}
+
+function resetPassword(token, newPassword) {
+  return _authFetch("/api/auth/reset-password", { token, new_password: newPassword });
+}
+
+function confirmEmailToken(token) {
+  return _authFetch("/api/auth/confirm-email", { token });
+}
+
+function changePassword(currentPassword, newPassword) {
+  return apiFetch("/api/auth/change-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+}
+
+function deleteMyAccount(password) {
+  return apiFetch("/api/auth/me", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
 }
 
 async function logoutAccount() {

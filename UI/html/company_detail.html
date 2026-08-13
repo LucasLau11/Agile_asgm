@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Company Details</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/application.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Job Portal</div>
+    <div class="topbar-right">
+      <nav>
+        <a href="/UI/html/browse_job.html">Browse Jobs</a>
+        <a href="/UI/html/profile.html">Profile</a>
+      </nav>
+    </div>
+  </header>
+  <div class="dev-user-bar" id="devUserBar"></div>
+
+  <main class="page" style="max-width:800px; margin:0 auto;">
+    <div id="backLink" style="margin-bottom:20px;">
+      <a href="#" class="btn btn-secondary" onclick="history.back(); return false;">← Back</a>
+    </div>
+
+    <div id="companyContent" style="display:none;">
+      <!-- Company Header -->
+      <div style="margin-bottom:32px;">
+        <h1 id="companyName"></h1>
+        <div class="info-contact" style="margin-bottom:16px;">
+          <span id="industryDisplay"></span>
+          <span id="verificationStatus"></span>
+        </div>
+      </div>
+
+      <!-- Company Description -->
+      <section class="profile-section">
+        <h2>About</h2>
+        <p id="companyDescription" style="line-height:1.6; color:#555;"></p>
+      </section>
+
+      <!-- Contact Info -->
+      <section class="profile-section">
+        <h2>Contact Information</h2>
+        <div id="contactInfo"></div>
+      </section>
+
+      <!-- Jobs from this Company -->
+      <section class="profile-section">
+        <h2>Open Positions</h2>
+        <div id="companyJobs"></div>
+      </section>
+    </div>
+
+    <div id="errorMessage" style="display:none; padding:20px; border-radius:8px; background:#ffebee; border:1px solid #f44336;">
+      <h2 style="color:#c62828; margin-top:0;">Company Not Found</h2>
+      <p id="errorText"></p>
+      <a href="/UI/html/browse_job.html" class="btn btn-secondary" style="display:inline-block; margin-top:12px;">Back to Jobs</a>
+    </div>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script>
+    let companyData = null;
+
+    async function init() {
+      // Get employer ID from URL query parameter
+      const params = new URLSearchParams(window.location.search);
+      const employerId = params.get("id");
+
+      if (!employerId) {
+        showError("No company ID provided.");
+        return;
+      }
+
+      try {
+        companyData = await fetchCompanyDetail(employerId);
+        renderCompanyDetails();
+        await loadCompanyJobs(employerId);
+      } catch (err) {
+        showError(err.message || "Failed to load company details.");
+      }
+    }
+
+    function renderCompanyDetails() {
+      document.getElementById("companyName").textContent = escapeHtml(companyData.company_name);
+
+      // Industry
+      const industryEl = document.getElementById("industryDisplay");
+      if (companyData.industry) {
+        industryEl.innerHTML = `<span>${escapeHtml(companyData.industry)}</span>`;
+      } else {
+        industryEl.style.display = "none";
+      }
+
+      // Verification Status
+      const verificationEl = document.getElementById("verificationStatus");
+      if (companyData.verification_status === "verified") {
+        verificationEl.innerHTML = `<span class="skill-tag" style="background:#4caf50; color:white;">✓ Verified</span>`;
+      } else if (companyData.verification_status === "pending") {
+        verificationEl.innerHTML = `<span class="skill-tag" style="background:#ff9800; color:white;">Verification Pending</span>`;
+      } else if (companyData.verification_status === "rejected") {
+        verificationEl.innerHTML = `<span class="skill-tag" style="background:#f44336; color:white;">Verification Rejected</span>`;
+      } else {
+        verificationEl.style.display = "none";
+      }
+
+      // Description
+      const descEl = document.getElementById("companyDescription");
+      if (companyData.description) {
+        descEl.textContent = companyData.description;
+      } else {
+        descEl.textContent = "No description provided.";
+        descEl.style.color = "#999";
+      }
+
+      // Contact Info
+      const contactEl = document.getElementById("contactInfo");
+      let contactHtml = "";
+      if (companyData.website) {
+        contactHtml += `<div style="margin-bottom:12px;"><strong>Website:</strong> <a href="${escapeHtml(companyData.website)}" target="_blank">${escapeHtml(companyData.website)}</a></div>`;
+      }
+      if (companyData.registration_number) {
+        contactHtml += `<div style="margin-bottom:12px;"><strong>SSM Registration:</strong> ${escapeHtml(companyData.registration_number)}</div>`;
+      }
+      if (!contactHtml) {
+        contactHtml = `<p style="color:#999;">No contact information provided.</p>`;
+      }
+      contactEl.innerHTML = contactHtml;
+
+      document.getElementById("companyContent").style.display = "block";
+    }
+
+    async function loadCompanyJobs(employerId) {
+      try {
+        const jobs = await fetchJobs({ keyword: "" });
+        const companyJobs = jobs.filter(job => job.employer_id == employerId && job.status === "open");
+
+        const jobsEl = document.getElementById("companyJobs");
+        if (companyJobs.length === 0) {
+          jobsEl.innerHTML = `<p style="color:#999;">No open positions at the moment.</p>`;
+          return;
+        }
+
+        jobsEl.innerHTML = companyJobs.map(job => `
+          <div class="entry-card" style="margin-bottom:12px;">
+            <a href="/UI/html/job_detail.html?id=${job.id}" style="text-decoration:none; color:inherit;">
+              <div class="entry-card-header">
+                <div>
+                  <div class="entry-title">${escapeHtml(job.title)}</div>
+                  <div class="entry-subtitle">${escapeHtml(job.location)} · ${escapeHtml(job.job_type)}</div>
+                  ${job.salary_min && job.salary_max ? `<div class="entry-subtitle">RM ${formatSalary(job.salary_min, job.salary_max)}</div>` : ""}
+                </div>
+              </div>
+            </a>
+          </div>
+        `).join("");
+      } catch (err) {
+        console.error("Failed to load company jobs:", err);
+      }
+    }
+
+    function showError(message) {
+      document.getElementById("companyContent").style.display = "none";
+      document.getElementById("errorMessage").style.display = "block";
+      document.getElementById("errorText").textContent = message;
+    }
+
+    // Render account bar if user is logged in
+    async function renderUserBar() {
+      const account = await getCurrentAccount();
+      if (account) {
+        renderAccountBar("devUserBar", account);
+      }
+    }
+
+    renderUserBar();
+    init();
+  </script>
+</body>
+</html>

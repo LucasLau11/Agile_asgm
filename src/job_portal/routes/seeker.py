@@ -9,6 +9,7 @@ from job_portal.database import get_db
 from job_portal.models import Education, Employer, Job, SeekerProfile, WorkExperience
 from job_portal.routes.auth import get_current_account_optional, require_role
 from job_portal.schemas import (
+    CompanyDetailOut,
     EducationIn,
     EducationOut,
     ExperienceIn,
@@ -25,14 +26,16 @@ from job_portal.services.file_validation import (
     ALLOWED_EXTENSIONS,
     MAX_RESUME_SIZE_BYTES,
     detect_safe_extension,
+    detect_safe_message_attachment,
     sanitize_display_filename,
 )
 from job_portal.services.resume_parser import parse_resume
 
 router = APIRouter(tags=["seeker"])
 
-# Where uploaded resumes get stored local disk.
+# Where uploaded resumes and profile pictures get stored on disk.
 RESUME_UPLOAD_DIR = os.getenv("RESUME_UPLOAD_DIR", "uploads/resumes")
+PROFILE_PICTURE_UPLOAD_DIR = os.getenv("PROFILE_PICTURE_UPLOAD_DIR", "uploads/profile_pictures")
 
 # fetch a seeker's profile, creating an empty one if it doesn't exist yet.
 def _get_or_create_profile(db: Session, seeker_id: int) -> SeekerProfile:
@@ -357,6 +360,42 @@ async def upload_resume(
     return SeekerProfileOut.from_profile(profile)
 
 
+@router.post("/api/seekers/me/profile-picture", response_model=SeekerProfileOut, status_code=201)
+async def upload_profile_picture(
+    file: UploadFile = File(...),
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
+) -> SeekerProfileOut:
+    """US-72: upload a profile picture for the seeker's public profile."""
+    contents = await file.read()
+    if len(contents) > MAX_RESUME_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="Profile picture must be under 5 MB.")
+
+    detected = detect_safe_message_attachment(contents)
+    if detected is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Profile picture must be a genuine JPG, PNG, GIF, or WEBP image.",
+        )
+    extension, _ = detected
+
+    os.makedirs(PROFILE_PICTURE_UPLOAD_DIR, exist_ok=True)
+    stored_name = f"{seeker_id}_{uuid.uuid4().hex}{extension}"
+    stored_path = os.path.join(PROFILE_PICTURE_UPLOAD_DIR, stored_name)
+
+    with open(stored_path, "wb") as f:
+        f.write(contents)
+
+    profile = _get_or_create_profile(db, seeker_id)
+    if profile.profile_picture_url and os.path.exists(profile.profile_picture_url):
+        os.remove(profile.profile_picture_url)
+    profile.profile_picture_filename = sanitize_display_filename(file.filename)
+    profile.profile_picture_url = stored_path
+    db.commit()
+    db.refresh(profile)
+    return SeekerProfileOut.from_profile(profile)
+
+
 @router.get("/api/seekers/me/resume/parse", response_model=ParsedResumeOut)
 def parse_seeker_resume(
     seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
@@ -393,3 +432,15 @@ def parse_seeker_resume(
         education=result.education,
         text_extracted=result.raw_text_extracted,
     )
+
+
+@router.get("/api/companies/{employer_id}", response_model=CompanyDetailOut)
+def get_company_detail(
+    employer_id: int,
+    db: Session = Depends(get_db),
+) -> CompanyDetailOut:
+    """US-19: public company detail page for job seekers."""
+    employer = db.query(Employer).filter(Employer.id == employer_id).first()
+    if employer is None:
+        raise HTTPException(status_code=404, detail="Company not found.")
+    return CompanyDetailOut.from_employer(employer)

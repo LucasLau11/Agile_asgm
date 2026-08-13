@@ -74,12 +74,11 @@ def test_register_seeker_allowed_domain_accepted(client):
     assert res.status_code == 201
 
 
-def test_register_seeker_disallowed_domain_rejected(client):
+def test_register_seeker_academic_domain_accepted(client):
     res = client.post("/api/auth/register/seeker", json={
-        "full_name": "Domain Bad", "email": "domain.bad@myuniversity.edu", "password": "correcthorse",
+        "full_name": "Domain Academic", "email": "domain.student@tarc.edu.my", "password": "correcthorse",
     })
-    assert res.status_code == 422
-    assert "Gmail" in res.text
+    assert res.status_code == 201
 
 
 def test_register_employer_allowed_domain_accepted(client):
@@ -89,12 +88,11 @@ def test_register_employer_allowed_domain_accepted(client):
     assert res.status_code == 201
 
 
-def test_register_employer_disallowed_domain_rejected(client):
+def test_register_employer_academic_domain_accepted(client):
     res = client.post("/api/auth/register/employer", json={
-        "company_name": "Domain Bad Co", "email": "domain.bad.employer@myuniversity.edu", "password": "correcthorse",
+        "company_name": "Domain Academic Co", "email": "domain.hr@university.edu", "password": "correcthorse",
     })
-    assert res.status_code == 422
-    assert "Gmail" in res.text
+    assert res.status_code == 201
 
 
 def test_login_success(client):
@@ -307,6 +305,51 @@ def test_get_current_account_optional_valid_session_returns_account(db_session):
     token = create_session(db_session, "seeker", 7)
     result = get_current_account_optional(session_token=token, db=db_session)
     assert result == {"role": "seeker", "id": 7}
+
+
+def test_get_company_detail_returns_verified_public_profile(client, db_session):
+    from job_portal.models import Employer
+
+    employer = Employer(
+        company_name="Northwind Labs",
+        email="northwind@gmail.com",
+        hashed_password="ignored",
+        description="We build AI services.",
+        industry="Technology",
+        website="https://northwind.example",
+        verification_status="approved",
+    )
+    db_session.add(employer)
+    db_session.commit()
+    db_session.refresh(employer)
+
+    res = client.get(f"/api/companies/{employer.id}")
+    assert res.status_code == 200
+    assert res.json() == {
+        "id": employer.id,
+        "company_name": "Northwind Labs",
+        "description": "We build AI services.",
+        "industry": "Technology",
+        "website": "https://northwind.example",
+        "is_verified": True,
+    }
+
+
+def test_seeker_can_upload_profile_picture(client):
+    client.post(
+        "/api/auth/register/seeker",
+        json={"full_name": "Avatar User", "email": "avatar.user@gmail.com", "password": "correcthorse"},
+    )
+    image_bytes = b"\x89PNG\r\n\x1a\n" + b"12345678" + b"\xff\xd8\xff\x00"
+    res = client.post(
+        "/api/seekers/me/profile-picture",
+        files={"file": ("avatar.png", image_bytes, "image/png")},
+    )
+    assert res.status_code == 201
+    body = res.json()
+    assert body["profile_picture_filename"] == "avatar.png"
+    assert body["profile_picture_url"].startswith("/")
+    assert body["profile_picture_url"].endswith(".png")
 
 
 def test_require_role_returns_id_for_matching_role():

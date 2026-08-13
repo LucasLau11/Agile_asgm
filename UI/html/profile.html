@@ -177,6 +177,52 @@
       <div id="resumeCurrent"></div>
       <div id="scanResumeContainer"></div>
     </section>
+
+    <!-- Profile Picture -->
+    <section class="profile-section">
+      <h2>Profile Picture</h2>
+      <div id="profilePictureContainer"></div>
+      <label class="resume-drop" for="profilePictureInput" style="display:block; cursor:pointer;">
+        Click to choose an image file (JPG, PNG, max 5&nbsp;MB)
+      </label>
+      <input type="file" id="profilePictureInput" accept=".jpg,.jpeg,.png" style="display:none" />
+      <p class="status-msg" id="profilePictureStatus"></p>
+    </section>
+
+    <!-- Change Password -->
+    <section class="profile-section">
+      <div class="section-header-row">
+        <h2>Change Password</h2>
+      </div>
+      <form id="changePasswordForm" novalidate>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="currentPasswordInput">Current password *</label>
+          <input type="password" id="currentPasswordInput" required />
+          <div class="field-error" id="currentPasswordError"></div>
+        </div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="newPasswordInput">New password *</label>
+          <input type="password" id="newPasswordInput" required />
+          <div class="field-error" id="newPasswordError"></div>
+        </div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="confirmPasswordInput">Confirm new password *</label>
+          <input type="password" id="confirmPasswordInput" required />
+          <div class="field-error" id="confirmPasswordError"></div>
+        </div>
+        <button type="submit" class="btn btn-primary">Change Password</button>
+      </form>
+      <p class="status-msg" id="changePasswordStatus"></p>
+    </section>
+
+    <!-- Delete Account -->
+    <section class="profile-section" style="border-top:1px solid #e0e0e0; margin-top:32px; padding-top:32px;">
+      <h2 style="color:#d32f2f;">Delete Account</h2>
+      <p class="subtitle">Once you delete your account, there is no going back. Please be certain.</p>
+      <button type="button" class="btn btn-secondary" id="deleteAccountBtn" style="background-color:#d32f2f; color:white;">Delete My Account</button>
+      <p class="status-msg" id="deleteAccountStatus"></p>
+    </section>
+
   <div id="applicationsTrackerContainer"></div>
   </main>
 
@@ -823,6 +869,159 @@
       }
     });
 
+    // ============================ Profile Picture ============================
+
+    function renderProfilePictureDisplay() {
+      const el = document.getElementById("profilePictureContainer");
+      if (!profileData.profile_picture_filename) {
+        el.innerHTML = `<p class="subtitle" style="font-size:0.88rem; margin-bottom:12px;">No profile picture yet.</p>`;
+        return;
+      }
+
+      const filename = profileData.profile_picture_filename;
+      el.innerHTML = `
+        <div class="file-card-v2">
+          <img src="${escapeHtml(profileData.profile_picture_url)}" style="width:80px; height:80px; border-radius:50%; object-fit:cover;" alt="Profile picture" />
+          <div class="file-info" style="flex:1; margin-left:12px;">
+            <div class="file-name">${escapeHtml(filename)}</div>
+            <div class="file-type-meta">Profile picture</div>
+          </div>
+        </div>
+      `;
+    }
+
+    document.getElementById("profilePictureInput").addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const statusEl = document.getElementById("profilePictureStatus");
+      statusEl.textContent = "";
+      statusEl.className = "status-msg";
+
+      const lowerName = file.name.toLowerCase();
+      if (!lowerName.endsWith(".jpg") && !lowerName.endsWith(".jpeg") && !lowerName.endsWith(".png")) {
+        statusEl.textContent = "Upload failed: only JPG or PNG files are accepted.";
+        statusEl.className = "status-msg error";
+        e.target.value = "";
+        return;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        statusEl.textContent = "Upload failed: file must be under 5 MB.";
+        statusEl.className = "status-msg error";
+        e.target.value = "";
+        return;
+      }
+
+      statusEl.textContent = "Uploading…";
+      try {
+        profileData = await uploadProfilePicture(file);
+        renderProfilePictureDisplay();
+        statusEl.textContent = "Profile picture uploaded.";
+        statusEl.className = "status-msg success";
+      } catch (err) {
+        statusEl.textContent = `Upload failed: ${err.message}`;
+        statusEl.className = "status-msg error";
+      }
+    });
+
+    // ============================ Change Password ============================
+
+    document.getElementById("changePasswordForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const statusEl = document.getElementById("changePasswordStatus");
+      const currentPasswordError = document.getElementById("currentPasswordError");
+      const newPasswordError = document.getElementById("newPasswordError");
+      const confirmPasswordError = document.getElementById("confirmPasswordError");
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+
+      statusEl.textContent = "";
+      statusEl.className = "status-msg";
+      currentPasswordError.textContent = "";
+      newPasswordError.textContent = "";
+      confirmPasswordError.textContent = "";
+
+      const currentPassword = document.getElementById("currentPasswordInput").value;
+      const newPassword = document.getElementById("newPasswordInput").value;
+      const confirmPassword = document.getElementById("confirmPasswordInput").value;
+
+      let valid = true;
+
+      if (!currentPassword) {
+        currentPasswordError.textContent = "Current password is required.";
+        valid = false;
+      }
+
+      if (!newPassword) {
+        newPasswordError.textContent = "New password is required.";
+        valid = false;
+      } else if (newPassword.length < 8) {
+        newPasswordError.textContent = "Password must be at least 8 characters.";
+        valid = false;
+      } else if (newPassword === currentPassword) {
+        newPasswordError.textContent = "New password must be different from current password.";
+        valid = false;
+      }
+
+      if (!confirmPassword) {
+        confirmPasswordError.textContent = "Confirm password is required.";
+        valid = false;
+      } else if (confirmPassword !== newPassword) {
+        confirmPasswordError.textContent = "Passwords do not match.";
+        valid = false;
+      }
+
+      if (!valid) return;
+
+      setButtonBusy(submitBtn, true, "Changing…");
+      try {
+        await changePassword(currentPassword, newPassword);
+        statusEl.textContent = "Password changed successfully.";
+        statusEl.className = "status-msg success";
+        e.target.reset();
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+        statusEl.className = "status-msg error";
+      } finally {
+        setButtonBusy(submitBtn, false);
+      }
+    });
+
+    // ============================ Delete Account ============================
+
+    document.getElementById("deleteAccountBtn").addEventListener("click", async () => {
+      const confirmed = confirm("Are you sure you want to delete your account? This action cannot be undone.");
+      if (!confirmed) return;
+
+      const passwordPrompt = prompt("Please enter your password to confirm account deletion:");
+      if (passwordPrompt === null) return; // User cancelled
+
+      if (!passwordPrompt) {
+        alert("Password is required to delete your account.");
+        return;
+      }
+
+      const statusEl = document.getElementById("deleteAccountStatus");
+      const btn = document.getElementById("deleteAccountBtn");
+
+      setButtonBusy(btn, true, "Deleting…");
+      statusEl.textContent = "";
+      statusEl.className = "status-msg";
+
+      try {
+        await deleteMyAccount(passwordPrompt);
+        statusEl.textContent = "Account deleted. Redirecting to home page…";
+        statusEl.className = "status-msg success";
+        setTimeout(() => {
+          window.location.href = "/UI/html/login.html";
+        }, 2000);
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+        statusEl.className = "status-msg error";
+        setButtonBusy(btn, false);
+      }
+    });
+
     // ============================ Initial load ============================
 
     async function loadProfile() {
@@ -833,11 +1032,13 @@
         renderExperience();
         renderEducation();
         renderResumeCurrent();
+        renderProfilePictureDisplay();
       } catch (err) {
         document.getElementById("skillsStatus").textContent = `Couldn't load profile: ${err.message}`;
         document.getElementById("skillsStatus").className = "status-msg error";
       }
     }
+
     async function injectApplicationsTracker() {
       try {
         const response = await fetch(`/my-applications-fragment`, { credentials: "include" });

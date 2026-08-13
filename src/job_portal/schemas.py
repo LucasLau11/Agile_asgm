@@ -84,9 +84,6 @@ def _validate_date_field(value: Optional[str]) -> str:
     return value
 
 
-ALLOWED_EMAIL_DOMAINS = {"gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com"}
-
-
 def _validate_registration_email(value: str) -> str:
     value = (value or "").strip().lower()
     if not value:
@@ -94,13 +91,9 @@ def _validate_registration_email(value: str) -> str:
     from email_validator import EmailNotValidError, validate_email
 
     try:
-        info = validate_email(value, check_deliverability=False)
+        validate_email(value, check_deliverability=False)
     except EmailNotValidError:
         raise ValueError("Must be a valid email address, e.g. name@example.com")
-    if info.domain.lower() not in ALLOWED_EMAIL_DOMAINS:
-        raise ValueError(
-            "Please register with an email from Gmail, Yahoo, Outlook, Hotmail, or iCloud."
-        )
     return value
 
 
@@ -401,13 +394,16 @@ class SeekerProfileOut(BaseModel):
     bio: Optional[str] = ""
     resume_filename: Optional[str] = None
     resume_url: Optional[str] = None
+    profile_picture_filename: Optional[str] = None
+    profile_picture_url: Optional[str] = None
     skills: List[str] = []
     experience: List[ExperienceOut] = []
     education: List[EducationOut] = []
 
     @classmethod
     def from_profile(cls, profile) -> "SeekerProfileOut":
-        url = f"/{profile.resume_url}" if profile.resume_url else None
+        resume_url = f"/{profile.resume_url}" if profile.resume_url else None
+        profile_picture_url = f"/{profile.profile_picture_url}" if profile.profile_picture_url else None
         return cls(
             seeker_id=profile.seeker_id,
             full_name=profile.full_name or "",
@@ -415,7 +411,9 @@ class SeekerProfileOut(BaseModel):
             phone=profile.phone or "",
             bio=profile.bio or "",
             resume_filename=profile.resume_filename,
-            resume_url=url,
+            resume_url=resume_url,
+            profile_picture_filename=profile.profile_picture_filename,
+            profile_picture_url=profile_picture_url,
             skills=profile.skills_list(),
             experience=[ExperienceOut.model_validate(e) for e in profile.experience],
             education=[EducationOut.model_validate(e) for e in profile.education],
@@ -552,6 +550,76 @@ class AuthAccountOut(BaseModel):
     id: int
     email: str
     display_name: str
+    # None for admin (no confirmation concept). True/False for seeker;
+    # employers don't have an email-confirmation story (US-68 is seeker-
+    # only) so this is always True for them — nothing to prompt them to do.
+    email_confirmed: Optional[bool] = None
+
+
+class ConfirmEmailIn(BaseModel):
+    """Body for POST /api/auth/confirm-email (US-68)."""
+
+    token: str = Field(..., min_length=1)
+
+
+class ForgotPasswordIn(BaseModel):
+    """Body for POST /api/auth/forgot-password (US-69, US-73). Always
+    returns the same generic response whether or not the email exists —
+    see routes/auth.py — so this schema doesn't need a role field; both
+    seeker and employer tables are checked."""
+
+    email: str = Field(..., max_length=150)
+
+
+class ResetPasswordIn(BaseModel):
+    """Body for POST /api/auth/reset-password (US-69, US-73)."""
+
+    token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8, max_length=200)
+
+
+class ChangePasswordIn(BaseModel):
+    """Body for POST /api/auth/change-password (US-70, US-74). Requires
+    the current password so a hijacked/left-open session can't be used to
+    lock the real owner out permanently."""
+
+    current_password: str = Field(..., max_length=200)
+    new_password: str = Field(..., min_length=8, max_length=200)
+
+
+class DeleteAccountIn(BaseModel):
+    """Body for DELETE /api/auth/me (US-71). Requires the current
+    password as confirmation — mirrors change-password's reasoning: a
+    left-open session shouldn't be enough to destroy the account."""
+
+    password: str = Field(..., max_length=200)
+
+
+class CompanyDetailOut(BaseModel):
+    """Public, read-only company profile for job seekers (US-19). Deliberately
+    narrower than EmployerProfileOut (the employer's own /me view) — omits
+    email and verification-document/rejection internals that are nobody
+    else's business."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_name: str
+    description: Optional[str] = None
+    industry: Optional[str] = None
+    website: Optional[str] = None
+    is_verified: bool = False
+
+    @classmethod
+    def from_employer(cls, employer) -> "CompanyDetailOut":
+        return cls(
+            id=employer.id,
+            company_name=employer.company_name,
+            description=employer.description,
+            industry=employer.industry,
+            website=employer.website,
+            is_verified=employer.verification_status == "approved",
+        )
 
 
 class ExperienceSuggestion(BaseModel):
