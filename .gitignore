@@ -4,3 +4,5 @@ test_job_portal.db
 __pycache__/
 *.pyc
 .superpowers/
+uploads/
+test_message_encryption.key
