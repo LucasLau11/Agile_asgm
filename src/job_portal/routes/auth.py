@@ -88,7 +88,7 @@ def _set_session_cookie(response: Response, token: str) -> None:
 
 def _try_send(send_fn, *args) -> None:
     """Best-effort email send: registration/reset should still succeed
-    even if Mailtrap is unreachable or MAILTRAP_API_TOKEN isn't configured
+    even if the SMTP provider is unreachable or isn't configured
     on this machine — the alternative (500ing the whole request) would
     make the app unusable for anyone who hasn't set up a .env yet. The
     token/reset row is still saved either way, so a resend or a manually

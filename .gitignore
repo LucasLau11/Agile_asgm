@@ -1,3 +1,4 @@
+.env
 job_portal.db
 test_job_portal.db
 __pycache__/

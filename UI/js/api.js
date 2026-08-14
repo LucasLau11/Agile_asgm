@@ -3,6 +3,7 @@
  */
 
 const API_BASE = ""; // same-origin: FastAPI serves both the API and /UI/*
+const DEFAULT_PROFILE_IMAGE_URL = "/UI/assets/default-profile.png";
 
 const TEST_SEEKERS = [
   { id: 1, label: "Seeker #1 — Aisha" },
@@ -829,6 +830,40 @@ function _startMessagesNavBadgePolling() {
 
 if (typeof document !== "undefined") {
   document.addEventListener("DOMContentLoaded", _startMessagesNavBadgePolling);
+}
+
+// Show the seeker's uploaded picture beside the Profile navigation label.
+// Kept here because api.js is shared by every seeker page.
+function setSeekerNavAvatar(profile) {
+  const link = document.querySelector('header .topbar-right a[href="/UI/html/profile.html"]');
+  if (!link) return;
+
+  link.classList.add("profile-nav-link");
+  let avatar = link.querySelector(".profile-nav-avatar");
+
+  if (!avatar) {
+    avatar = document.createElement("img");
+    avatar.className = "profile-nav-avatar";
+    avatar.alt = "Your profile picture";
+    link.prepend(avatar);
+  }
+  avatar.src = profile?.profile_picture_url || DEFAULT_PROFILE_IMAGE_URL;
+}
+
+async function _loadSeekerNavAvatar() {
+  const profileLink = document.querySelector('header a[href="/UI/html/profile.html"]');
+  if (!profileLink) return;
+
+  setSeekerNavAvatar(null);
+  try {
+    setSeekerNavAvatar(await fetchSeekerProfile());
+  } catch (_) {
+    // Navigation remains usable if the profile request fails or expires.
+  }
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("DOMContentLoaded", () => setTimeout(_loadSeekerNavAvatar, 300));
 }
 
 /** Blocks the other participant. Blocking is enforced by the API for both

@@ -402,8 +402,15 @@ class SeekerProfileOut(BaseModel):
 
     @classmethod
     def from_profile(cls, profile) -> "SeekerProfileOut":
-        resume_url = f"/{profile.resume_url}" if profile.resume_url else None
-        profile_picture_url = f"/{profile.profile_picture_url}" if profile.profile_picture_url else None
+        # Database values are filesystem paths.  On Windows ``os.path.join``
+        # stores them with backslashes, which are not valid URL separators and
+        # prevents the browser from loading files from FastAPI's /uploads mount.
+        resume_url = f"/{profile.resume_url.replace(chr(92), '/')}" if profile.resume_url else None
+        profile_picture_url = (
+            f"/{profile.profile_picture_url.replace(chr(92), '/')}"
+            if profile.profile_picture_url
+            else None
+        )
         return cls(
             seeker_id=profile.seeker_id,
             full_name=profile.full_name or "",

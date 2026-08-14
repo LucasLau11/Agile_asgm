@@ -71,6 +71,22 @@ a { color: inherit; }
 .topbar nav a:hover { opacity: 1; text-decoration: underline; }
 .topbar nav a.active { opacity: 1; text-decoration: underline; }
 
+.topbar nav a.profile-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  vertical-align: middle;
+}
+
+.profile-nav-avatar {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--paper);
+}
+
 .nav-badge {
   display: inline-block;
   min-width: 16px;

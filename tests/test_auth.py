@@ -350,6 +350,10 @@ def test_seeker_can_upload_profile_picture(client):
     assert body["profile_picture_filename"] == "avatar.png"
     assert body["profile_picture_url"].startswith("/")
     assert body["profile_picture_url"].endswith(".png")
+    assert "\\" not in body["profile_picture_url"]
+    image_response = client.get(body["profile_picture_url"])
+    assert image_response.status_code == 200
+    assert image_response.content == image_bytes
 
 
 def test_require_role_returns_id_for_matching_role():

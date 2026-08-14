@@ -874,7 +874,15 @@
     function renderProfilePictureDisplay() {
       const el = document.getElementById("profilePictureContainer");
       if (!profileData.profile_picture_filename) {
-        el.innerHTML = `<p class="subtitle" style="font-size:0.88rem; margin-bottom:12px;">No profile picture yet.</p>`;
+        el.innerHTML = `
+          <div class="file-card-v2">
+            <img src="${DEFAULT_PROFILE_IMAGE_URL}" style="width:80px; height:80px; border-radius:50%; object-fit:cover;" alt="Default profile picture" />
+            <div class="file-info" style="flex:1; margin-left:12px;">
+              <div class="file-name">Default profile picture</div>
+              <div class="file-type-meta">Upload an image below to replace it</div>
+            </div>
+          </div>
+        `;
         return;
       }
 
@@ -917,6 +925,7 @@
       try {
         profileData = await uploadProfilePicture(file);
         renderProfilePictureDisplay();
+        setSeekerNavAvatar(profileData);
         statusEl.textContent = "Profile picture uploaded.";
         statusEl.className = "status-msg success";
       } catch (err) {

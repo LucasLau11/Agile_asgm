@@ -1,64 +1,68 @@
 """
-Transactional email sending via Mailtrap (US-68 email confirmation,
+Transactional email sending over standard SMTP (US-68 email confirmation,
 US-69/US-73 password reset).
 
-Credentials (MAILTRAP_API_TOKEN, MAILTRAP_INBOX_ID) are read from
-environment variables, loaded from a local .env file that is never
-committed to git (see .gitignore). Emails are sent to a Mailtrap sandbox
-inbox during development rather than real recipient inboxes — see
-MAILTRAP_SANDBOX below to switch that off for a real deployment.
+SMTP credentials are read from environment variables loaded from the
+project-root .env file, which must never be committed (see .gitignore).
+Brevo is used for delivery, but the standard SMTP implementation remains
+portable to other providers and local mail-catching tools.
 
-Content is written directly in this file rather than as Mailtrap
-dashboard templates, so no per-teammate dashboard setup is needed to run
-or test these flows.
+Content is written directly in this file rather than as provider dashboard
+templates, so no per-teammate template setup is needed to run these flows.
 """
 
 import os
+import smtplib
+from email.message import EmailMessage
 
-import mailtrap as mt
 from dotenv import load_dotenv
 
 load_dotenv()
 
-MAILTRAP_API_TOKEN = os.getenv("MAILTRAP_API_TOKEN")
-MAILTRAP_INBOX_ID = os.getenv("MAILTRAP_INBOX_ID")
-MAILTRAP_SANDBOX = os.getenv("MAILTRAP_SANDBOX", "true").lower() != "false"
-
-# Shown as the "From" address on every email this app sends. Mailtrap's
-# sandbox mode doesn't actually deliver anywhere, so this doesn't need to
-# be a real, domain-verified address for local dev/testing.
-FROM_ADDRESS = mt.Address(email="noreply@jobportal.local", name="Job Portal")
+SMTP_HOST = os.getenv("SMTP_HOST")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+EMAIL_FROM = os.getenv("EMAIL_FROM")
+EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "Job Portal")
 
 
 class EmailNotConfigured(RuntimeError):
-    """Raised when MAILTRAP_API_TOKEN is missing, so callers can decide
-    whether to fail loudly or degrade gracefully (see routes)."""
+    """Raised when required SMTP configuration is missing."""
 
 
 def send_email(to_email: str, subject: str, html_body: str) -> None:
-    if not MAILTRAP_API_TOKEN:
+    missing = [
+        name
+        for name, value in (
+            ("SMTP_HOST", SMTP_HOST),
+            ("SMTP_USERNAME", SMTP_USERNAME),
+            ("SMTP_PASSWORD", SMTP_PASSWORD),
+            ("EMAIL_FROM", EMAIL_FROM),
+        )
+        if not value
+    ]
+    if missing:
         raise EmailNotConfigured(
-            "MAILTRAP_API_TOKEN is not set. Create a .env file with "
-            "MAILTRAP_API_TOKEN and MAILTRAP_INBOX_ID (see project README)."
+            f"Missing SMTP configuration: {', '.join(missing)}. "
+            "Add it to the project-root .env file."
         )
 
-    mail = mt.Mail(
-        sender=FROM_ADDRESS,
-        to=[mt.Address(email=to_email)],
-        subject=subject,
-        html=html_body,
-    )
+    message = EmailMessage()
+    message["From"] = f"{EMAIL_FROM_NAME} <{EMAIL_FROM}>"
+    message["To"] = to_email
+    message["Subject"] = subject
+    message.set_content("This message requires an HTML-capable email client.")
+    message.add_alternative(html_body, subtype="html")
 
-    kwargs = {"token": MAILTRAP_API_TOKEN, "sandbox": MAILTRAP_SANDBOX}
-    if MAILTRAP_SANDBOX:
-        if not MAILTRAP_INBOX_ID:
-            raise EmailNotConfigured(
-                "MAILTRAP_INBOX_ID is not set (required for sandbox mode)."
-            )
-        kwargs["inbox_id"] = MAILTRAP_INBOX_ID
-
-    client = mt.MailtrapClient(**kwargs)
-    client.send(mail)
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as client:
+        client.ehlo()
+        if SMTP_USE_TLS:
+            client.starttls()
+            client.ehlo()
+        client.login(SMTP_USERNAME, SMTP_PASSWORD)
+        client.send_message(message)
 
 
 def send_confirmation_email(to_email: str, confirm_url: str) -> None:
