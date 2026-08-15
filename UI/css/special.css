@@ -58,7 +58,7 @@ a { color: inherit; }
 }
 .topbar nav a:hover { opacity: 1; text-decoration: underline; }
 
-/* ---------- Test-user selector (Sprint 1 stand-in for login) ---------- */
+/* ---------- Authenticated account bar ---------- */
 
 .dev-user-bar {
   background: var(--gold);

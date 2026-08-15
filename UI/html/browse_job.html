@@ -77,7 +77,6 @@
 
   <script src="../js/api.js"></script>
   <script>
-    renderDevUserBar("devUserBar");
     let seekerId = null;
 
     // Populate the state and job type dropdowns from the shared constants in api.js
@@ -227,21 +226,10 @@
     });
 
     async function init() {
-      let account = null;
-      try {
-        account = await getCurrentAccount();
-      } catch (err) {
-        console.warn("Couldn't resolve session, browsing anonymously:", err.message);
-      }
-      
-      // Show real account bar if logged in, otherwise show dev user bar
-      if (account) {
-        renderAccountBar("devUserBar", account);
-      } else {
-        renderDevUserBar("devUserBar");
-      }
-      
-      seekerId = account && account.role === "seeker" ? account.id : null;
+      const account = await requireLogin("seeker");
+      if (!account) return;
+      renderAccountBar("devUserBar", account);
+      seekerId = account.id;
       loadJobs(currentFilters());
       loadRecommended();
     }

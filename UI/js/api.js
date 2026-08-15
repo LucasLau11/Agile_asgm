@@ -5,23 +5,6 @@
 const API_BASE = ""; // same-origin: FastAPI serves both the API and /UI/*
 const DEFAULT_PROFILE_IMAGE_URL = "/UI/assets/default-profile.png";
 
-const TEST_SEEKERS = [
-  { id: 1, label: "Seeker #1 — Aisha" },
-  { id: 2, label: "Seeker #2 — Marcus" },
-  { id: 3, label: "Seeker #3 — Priya" },
-];
-
-// Mirrors TEST_SEEKERS but for the employer side (job_management,
-// employer_applications, applicant_detail). Job.employer_id in the DB
-// ranges 1-3 across seeded jobs, so this needs at least that many
-// entries or some employers' postings/applications become unreachable
-// from the UI no matter who's "acting as" who.
-const TEST_EMPLOYERS = [
-  { id: 1, label: "Employer #1 — ABC Technologies" },
-  { id: 2, label: "Employer #2 — Nova Digital" },
-  { id: 3, label: "Employer #3 — Everest Analytics" },
-];
-
 // Used to populate the state/region filter dropdown on Browse Jobs.
 const MALAYSIA_STATES = [
   "Remote", "Kuala Lumpur", "Selangor", "Penang", "Johor", "Perak",
@@ -108,68 +91,6 @@ function formatSalary(min, max) {
   if (min != null && max != null) return `${fmt(min)} – ${fmt(max)} / month`;
   if (min != null) return `From ${fmt(min)} / month`;
   return `Up to ${fmt(max)} / month`;
-}
-
-function getCurrentSeekerId() {
-  return Number(localStorage.getItem("currentSeekerId") || TEST_SEEKERS[0].id);
-}
-
-function setCurrentSeekerId(id) {
-  localStorage.setItem("currentSeekerId", id);
-}
-
-function renderDevUserBar(containerId) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-
-  const current = getCurrentSeekerId();
-  const options = TEST_SEEKERS.map(
-    (s) => `<option value="${s.id}" ${s.id === current ? "selected" : ""}>${s.label}</option>`
-  ).join("");
-
-  container.innerHTML = `
-    Acting as:
-    <select id="devUserSelect">${options}</select>
-    <span style="opacity:0.75">(Sprint 1 stand-in for login — real auth arrives Sprint 3)</span>
-  `;
-
-  document.getElementById("devUserSelect").addEventListener("change", (e) => {
-    setCurrentSeekerId(e.target.value);
-    location.reload();
-  });
-}
-
-function getCurrentEmployerId() {
-  return Number(localStorage.getItem("currentEmployerId") || TEST_EMPLOYERS[0].id);
-}
-
-function setCurrentEmployerId(id) {
-  localStorage.setItem("currentEmployerId", id);
-}
-
-// Employer-side equivalent of renderDevUserBar. Use this instead on
-// employer-facing pages (job_management, employer_applications,
-// applicant_detail) so "acting as" actually changes which employer_id
-// is queried, instead of every page being stuck on a hardcoded id.
-function renderDevEmployerBar(containerId) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-
-  const current = getCurrentEmployerId();
-  const options = TEST_EMPLOYERS.map(
-    (e) => `<option value="${e.id}" ${e.id === current ? "selected" : ""}>${e.label}</option>`
-  ).join("");
-
-  container.innerHTML = `
-    Acting as:
-    <select id="devEmployerSelect">${options}</select>
-    <span style="opacity:0.75">(Sprint 1 stand-in for login — real auth arrives Sprint 3)</span>
-  `;
-
-  document.getElementById("devEmployerSelect").addEventListener("change", (e) => {
-    setCurrentEmployerId(e.target.value);
-    location.reload();
-  });
 }
 
 async function apiFetch(path, options = {}) {
@@ -616,6 +537,15 @@ async function renderAccountBar(containerId, account) {
   const container = document.getElementById(containerId);
   if (!container || !account) return;
 
+  if (account.role === "employer") {
+    const companyProfileLink = document.querySelector(
+      'header .topbar-right a[href="/UI/html/employer_profile.html"]'
+    );
+    if (companyProfileLink) {
+      companyProfileLink.textContent = account.display_name || "Company Profile";
+    }
+  }
+
   container.innerHTML = `
     Logged in as: <strong>${escapeHtml(account.display_name)}</strong>
     <button type="button" class="btn-link" id="logoutBtn" style="margin-left:12px;">Log out</button>
@@ -797,12 +727,8 @@ async function _refreshMessagesNavBadge() {
   const link = document.querySelector('a[href*="messages.html"]');
   if (!link) return; // this page has no Messages nav link (yet, or at all)
 
-  const isEmployer = link.getAttribute("href").includes("role=employer");
-  const role = isEmployer ? "employer" : "seeker";
-  const userId = isEmployer ? getCurrentEmployerId() : getCurrentSeekerId();
-
   try {
-    const conversations = await fetchConversations(role, userId);
+    const conversations = await fetchConversations();
     const total = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
 
     let badge = link.querySelector(".nav-badge");
@@ -834,20 +760,20 @@ if (typeof document !== "undefined") {
 
 // Show the seeker's uploaded picture beside the Profile navigation label.
 // Kept here because api.js is shared by every seeker page.
-function setSeekerNavAvatar(profile) {
+function setSeekerNavAvatar(profile, displayName = "Profile") {
   const link = document.querySelector('header .topbar-right a[href="/UI/html/profile.html"]');
   if (!link) return;
 
   link.classList.add("profile-nav-link");
-  let avatar = link.querySelector(".profile-nav-avatar");
-
-  if (!avatar) {
-    avatar = document.createElement("img");
-    avatar.className = "profile-nav-avatar";
-    avatar.alt = "Your profile picture";
-    link.prepend(avatar);
-  }
+  const avatar = document.createElement("img");
+  avatar.className = "profile-nav-avatar";
+  avatar.alt = "Your profile picture";
   avatar.src = profile?.profile_picture_url || DEFAULT_PROFILE_IMAGE_URL;
+
+  const label = document.createElement("span");
+  label.className = "profile-nav-label";
+  label.textContent = displayName || "Profile";
+  link.replaceChildren(avatar, label);
 }
 
 async function _loadSeekerNavAvatar() {
@@ -856,7 +782,8 @@ async function _loadSeekerNavAvatar() {
 
   setSeekerNavAvatar(null);
   try {
-    setSeekerNavAvatar(await fetchSeekerProfile());
+    const [account, profile] = await Promise.all([getCurrentAccount(), fetchSeekerProfile()]);
+    setSeekerNavAvatar(profile, account?.display_name);
   } catch (_) {
     // Navigation remains usable if the profile request fails or expires.
   }

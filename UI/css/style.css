@@ -108,7 +108,7 @@ a { color: inherit; }
   flex-wrap: wrap;
 }
 
-/* ---------- Test-user selector (Sprint 1 stand-in for login) ---------- */
+/* ---------- Authenticated account bar ---------- */
 
 .dev-user-bar {
   background: var(--gold);

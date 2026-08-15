@@ -27,8 +27,6 @@
 
   <script src="../js/api.js"></script>
   <script>
-renderDevUserBar("devUserBar");
-
     const pageContent = document.getElementById("pageContent");
     const jobId = new URLSearchParams(location.search).get("id");
 
@@ -38,8 +36,10 @@ renderDevUserBar("devUserBar");
         return;
       }
       try {
-        const account = await getCurrentAccount();
-        const seekerId = account && account.role === "seeker" ? account.id : null;
+        const account = await requireLogin("seeker");
+        if (!account) return;
+        renderAccountBar("devUserBar", account);
+        const seekerId = account.id;
         const job = await fetchJob(jobId, seekerId);
         const spotsLabel =
           job.positions_remaining === 0
