@@ -17,8 +17,8 @@
       <a href="/UI/html/employer_applications.html">Applications</a>
       <a href="/UI/html/messages.html?role=employer">Messages</a>
       <a href="/UI/html/employer_notifications.html">Notifications</a>
+      <a href="/UI/html/employer_profile.html">Company Profile</a>
     </nav>
-    <a href="/UI/html/browse_job.html" class="role-switch">Job Seeker</a>
   </div>
 </header>
 
@@ -41,23 +41,6 @@
 
   <script src="../js/api.js"></script>
   <script>
-    // Was hardcoded to 1, so this page could only ever show applications
-    // for employer #1 (ABC Technologies) — any job posted under a
-    // different employer_id (e.g. Frontend Developer, employer_id=2)
-    // could never surface here no matter who actually applied.
-    // getCurrentEmployerId() reads the same dev-user-style dropdown
-    // pattern used for seekers, so switching "Acting as" actually changes
-    // which employer's applications get queried.
-    const employerId = getCurrentEmployerId();
-    if (typeof renderDevEmployerBar === "function") {
-      renderDevEmployerBar("devUserBar");
-    } else {
-      document.getElementById("devUserBar").innerHTML = `
-        Acting as: Employer #${employerId} — ABC Technologies
-        <span style="opacity:0.75">(login stand-in for Sprint 1)</span>
-      `;
-    }
-
     function escapeHtml(str) {
       if (!str) return "";
       return str
@@ -106,11 +89,7 @@
     async function loadApplicants() {
       const listEl = document.getElementById("applicantList");
       try {
-        const response = await fetch(`/api/employer/applications?employer_id=${employerId}`, {
-          cache: "no-store",
-        });
-        if (!response.ok) throw new Error("Failed to pull database entries");
-        const applicants = await response.json();
+        const applicants = await fetchEmployerApplications();
 
         document.getElementById("totalCount").textContent = applicants.length;
 
@@ -130,7 +109,14 @@
       }
     }
 
-    document.addEventListener("DOMContentLoaded", loadApplicants);
+    async function init() {
+      const account = await requireLogin("employer");
+      if (!account) return;
+      renderAccountBar("devUserBar", account);
+      await loadApplicants();
+    }
+
+    init();
     // Also re-fetch on 'pageshow' so navigating back to this page (e.g. after
     // submitting a new application elsewhere) doesn't show a stale list from
     // the browser's back-forward cache — DOMContentLoaded doesn't fire again
@@ -141,5 +127,15 @@
       }
     });
   </script>
+  <footer class="site-footer">
+  <div class="footer-content">
+    <p>&copy; 2026 Job Portal. All rights reserved.</p>
+    <nav class="footer-links">
+      <a href="/">Home</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+    </nav>
+  </div>
+</footer>
 </body>
 </html>

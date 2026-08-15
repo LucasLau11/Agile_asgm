@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/application.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Job Portal — Admin</div>
+    <div class="topbar-right">
+      <div class="dev-user-bar" id="devUserBar"></div>
+    </div>
+  </header>
+
+  <main class="page">
+    <h1>Admin dashboard</h1>
+    <p class="subtitle">Monitor activity and review employer registrations.</p>
+
+    <section class="profile-section">
+      <h2>Platform overview</h2>
+      <div id="statistics" class="search-bar"><p class="loading-state">Loading...</p></div>
+    </section>
+
+    <section class="profile-section">
+      <h2>Job seekers</h2>
+      <div id="seekersList"><p class="loading-state">Loading…</p></div>
+    </section>
+
+    <section class="profile-section">
+      <h2>Employers <span id="pendingCount" class="skill-tag"></span></h2>
+      <div class="search-bar" style="margin-bottom:14px;">
+        <input id="employerSearch" type="search" placeholder="Search company, email, or SSM number" />
+        <select id="verificationFilter"><option value="">All verification statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>
+        <button class="btn btn-secondary" id="employerSearchBtn">Search</button>
+      </div>
+      <div id="employersList"><p class="loading-state">Loading…</p></div>
+    </section>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script>
+    async function init() {
+      const account = await requireLogin("admin");
+      if (!account) return;
+      renderAccountBar("devUserBar", account);
+      await Promise.all([loadStatistics(), loadSeekers(), loadEmployers()]);
+    }
+
+    function statusBadgeHtml(status) {
+      return `<span class="skill-tag${status === "suspended" ? " missing" : ""}">${escapeHtml(status)}</span>`;
+    }
+
+    function seekerRowHtml(seeker) {
+      const suspendLabel = seeker.status === "suspended" ? "Unsuspend" : "Suspend";
+      return `
+        <div class="entry-card">
+          <div class="entry-card-header">
+            <div>
+              <div class="entry-title">${escapeHtml(seeker.full_name || "(no name set)")}</div>
+              <div class="entry-subtitle">${escapeHtml(seeker.email || "(no email set)")} &nbsp;${statusBadgeHtml(seeker.status)}</div>
+            </div>
+            <div>
+              <button type="button" class="btn btn-secondary" data-action="suspend-seeker" data-id="${seeker.seeker_id}" data-status="${seeker.status}">${suspendLabel}</button>
+              <button type="button" class="btn btn-secondary" data-action="delete-seeker" data-id="${seeker.seeker_id}" data-name="${escapeHtml(seeker.full_name || seeker.email || "this seeker")}">Delete</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function employerRowHtml(employer) {
+      const suspendLabel = employer.status === "suspended" ? "Unsuspend" : "Suspend";
+      return `
+        <div class="entry-card">
+          <div class="entry-card-header">
+            <div>
+              <div class="entry-title">${escapeHtml(employer.company_name)}</div>
+              <div class="entry-subtitle">${escapeHtml(employer.email)} &nbsp;${statusBadgeHtml(employer.status)} &nbsp;${statusBadgeHtml(employer.verification_status)}</div>
+              <div class="entry-subtitle">SSM: ${escapeHtml(employer.registration_number || "Not submitted")}</div>
+            </div>
+            <div>
+              <button type="button" class="btn btn-secondary" data-action="details-employer" data-id="${employer.id}">Details</button>
+              ${employer.verification_document_filename ? `<a class="btn btn-secondary" href="${employerVerificationDocumentUrl(employer.id)}" target="_blank">Document</a>` : ""}
+              ${employer.verification_status === "pending" ? `<input type="text" data-rejection-for="${employer.id}" maxlength="1000" placeholder="Rejection reason" style="max-width:180px;" /><button type="button" class="btn btn-primary" data-action="approve-employer" data-id="${employer.id}">Approve</button><button type="button" class="btn btn-secondary" data-action="reject-employer" data-id="${employer.id}">Reject</button>` : ""}
+              <button type="button" class="btn btn-secondary" data-action="suspend-employer" data-id="${employer.id}" data-status="${employer.status}">${suspendLabel}</button>
+              <button type="button" class="btn btn-secondary" data-action="delete-employer" data-id="${employer.id}" data-name="${escapeHtml(employer.company_name)}">Delete</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    async function loadStatistics() {
+      try {
+        const s = await fetchAdminStatistics();
+        const entries = [["Seekers", s.seekers], ["Employers", s.employers], ["Jobs", s.jobs], ["Open jobs", s.open_jobs], ["Applications", s.applications], ["Pending reviews", s.pending_verifications], ["Verified", s.verified_employers]];
+        document.getElementById("statistics").innerHTML = entries.map(([label, value]) => `<div class="entry-card" style="min-width:115px"><div class="entry-title">${value}</div><div class="entry-subtitle">${label}</div></div>`).join("");
+        document.getElementById("pendingCount").textContent = `${s.pending_verifications} pending`;
+      } catch (err) {
+        document.getElementById("statistics").innerHTML = `<p class="status-msg error">${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    async function loadSeekers() {
+      const el = document.getElementById("seekersList");
+      try {
+        const seekers = await fetchAdminSeekers();
+        el.innerHTML = seekers.length === 0
+          ? `<p class="subtitle" style="font-size:0.88rem;">No job seeker accounts yet.</p>`
+          : seekers.map(seekerRowHtml).join("");
+        wireSeekerButtons();
+      } catch (err) {
+        el.innerHTML = `<p class="status-msg error">Couldn't load job seekers: ${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    async function loadEmployers() {
+      const el = document.getElementById("employersList");
+      try {
+        const employers = await fetchAdminEmployers(document.getElementById("employerSearch").value.trim(), document.getElementById("verificationFilter").value);
+        el.innerHTML = employers.length === 0
+          ? `<p class="subtitle" style="font-size:0.88rem;">No employer accounts yet.</p>`
+          : employers.map(employerRowHtml).join("");
+        wireEmployerButtons();
+      } catch (err) {
+        el.innerHTML = `<p class="status-msg error">Couldn't load employers: ${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    function wireSeekerButtons() {
+      document.querySelectorAll('button[data-action="suspend-seeker"]').forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          setButtonBusy(btn, true, "Working…");
+          try {
+            if (btn.dataset.status === "suspended") {
+              await unsuspendSeekerAccount(btn.dataset.id);
+            } else {
+              await suspendSeekerAccount(btn.dataset.id);
+            }
+            await loadSeekers();
+          } catch (err) {
+            alert(`Couldn't update this account: ${err.message}`);
+            setButtonBusy(btn, false);
+          }
+        });
+      });
+      document.querySelectorAll('button[data-action="delete-seeker"]').forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const confirmed = confirm(`Delete the account for "${btn.dataset.name}"? This can't be undone.`);
+          if (!confirmed) return;
+          setButtonBusy(btn, true, "Deleting…");
+          try {
+            await deleteSeekerAccount(btn.dataset.id);
+            await loadSeekers();
+          } catch (err) {
+            alert(`Couldn't delete this account: ${err.message}`);
+            setButtonBusy(btn, false);
+          }
+        });
+      });
+    }
+
+    function wireEmployerButtons() {
+      document.querySelectorAll('button[data-action="details-employer"]').forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          try {
+            const e = await fetchAdminEmployerDetail(btn.dataset.id);
+            alert(`${e.company_name}\nEmail: ${e.email}\nIndustry: ${e.industry || "Not provided"}\nWebsite: ${e.website || "Not provided"}\nSSM: ${e.registration_number || "Not submitted"}\nVerification: ${e.verification_status}${e.rejection_reason ? `\nReason: ${e.rejection_reason}` : ""}`);
+          } catch (err) { alert(err.message); }
+        });
+      });
+      document.querySelectorAll('button[data-action="approve-employer"]').forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          if (!confirm("Approve this employer as verified?")) return;
+          try { await approveEmployerVerification(btn.dataset.id); await Promise.all([loadEmployers(), loadStatistics()]); }
+          catch (err) { alert(err.message); }
+        });
+      });
+      document.querySelectorAll('button[data-action="reject-employer"]').forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const input = document.querySelector(`input[data-rejection-for="${btn.dataset.id}"]`);
+          const reason = input ? input.value.trim() : "";
+          if (!reason) {
+            alert("Enter a rejection reason before rejecting this employer.");
+            if (input) input.focus();
+            return;
+          }
+          if (!confirm("Reject this employer registration?")) return;
+          setButtonBusy(btn, true, "Rejecting...");
+          try {
+            await rejectEmployerVerification(btn.dataset.id, reason);
+            await Promise.all([loadEmployers(), loadStatistics()]);
+          } catch (err) {
+            alert(`Couldn't reject this employer: ${err.message}`);
+            setButtonBusy(btn, false);
+          }
+        });
+      });
+      document.querySelectorAll('button[data-action="suspend-employer"]').forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          setButtonBusy(btn, true, "Working…");
+          try {
+            if (btn.dataset.status === "suspended") {
+              await unsuspendEmployerAccount(btn.dataset.id);
+            } else {
+              await suspendEmployerAccount(btn.dataset.id);
+            }
+            await loadEmployers();
+          } catch (err) {
+            alert(`Couldn't update this account: ${err.message}`);
+            setButtonBusy(btn, false);
+          }
+        });
+      });
+      document.querySelectorAll('button[data-action="delete-employer"]').forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const confirmed = confirm(`Delete the account for "${btn.dataset.name}"? This can't be undone.`);
+          if (!confirmed) return;
+          setButtonBusy(btn, true, "Deleting…");
+          try {
+            await deleteEmployerAccount(btn.dataset.id);
+            await loadEmployers();
+          } catch (err) {
+            alert(`Couldn't delete this account: ${err.message}`);
+            setButtonBusy(btn, false);
+          }
+        });
+      });
+    }
+
+    document.getElementById("employerSearchBtn").addEventListener("click", loadEmployers);
+    document.getElementById("employerSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") loadEmployers(); });
+    document.getElementById("verificationFilter").addEventListener("change", loadEmployers);
+    init();
+  </script>
+</body>
+</html>

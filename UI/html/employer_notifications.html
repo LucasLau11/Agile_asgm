@@ -17,8 +17,8 @@
       <a href="/UI/html/employer_applications.html">Applications</a>
       <a href="/UI/html/messages.html?role=employer">Messages</a>
       <a href="/UI/html/employer_notifications.html" class="active">Notifications</a>
+      <a href="/UI/html/employer_profile.html">Company Profile</a>
     </nav>
-    <a href="/UI/html/browse_job.html" class="role-switch">Job Seeker</a>
   </div>
 </header>
 
@@ -37,52 +37,6 @@
 
   <script src="../js/api.js"></script>
   <script>
-    const employerId = (typeof getCurrentEmployerId === "function") ? getCurrentEmployerId() : 1;
-    if (typeof renderDevEmployerBar === "function") {
-      renderDevEmployerBar("devUserBar");
-    }
-
-    // Fallbacks in case api.js on the server doesn't have these yet —
-    // keeps this page working even if that file is out of sync.
-    if (typeof deleteNotification !== "function") {
-      window.deleteNotification = function (notificationId, role, userId) {
-        return fetch(`/api/notifications/${notificationId}?role=${role}&user_id=${userId}`, {
-          method: "DELETE",
-        }).then((res) => {
-          if (!res.ok) throw new Error("Failed to remove notification");
-          return res.json();
-        });
-      };
-    }
-    if (typeof clearAllNotifications !== "function") {
-      window.clearAllNotifications = function (role, userId) {
-        return fetch(`/api/notifications?role=${role}&user_id=${userId}`, {
-          method: "DELETE",
-        }).then((res) => {
-          if (!res.ok) throw new Error("Failed to clear notifications");
-          return res.json();
-        });
-      };
-    }
-    if (typeof escapeHtml !== "function") {
-      window.escapeHtml = function (str) {
-        if (!str) return "";
-        const div = document.createElement("div");
-        div.textContent = str;
-        return div.innerHTML;
-      };
-    }
-    if (typeof apiFetch !== "function") {
-      window.apiFetch = async function (path, options = {}) {
-        const res = await fetch(path, options);
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body.detail || res.statusText);
-        }
-        return res.json();
-      };
-    }
-
     function notificationCardHtml(note) {
       return `
         <div class="card notification-card" data-id="${note.id}">
@@ -100,10 +54,7 @@
     async function loadNotifications() {
       const listEl = document.getElementById("notificationList");
       try {
-        // Was calling /api/notifications?role=employer&user_id= — that path/param
-        // combo doesn't exist. The actual employer endpoint (added alongside
-        // the seeker one in applications.py) is /api/employer/notifications?employer_id=.
-        const notifications = await apiFetch(`/api/employer/notifications?employer_id=${employerId}`);
+        const notifications = await fetchNotifications();
 
         if (notifications.length === 0) {
           listEl.innerHTML = `<div class="empty-state">You don't have any notifications yet.</div>`;
@@ -128,7 +79,7 @@
           const id = Number(btn.dataset.id);
           btn.disabled = true;
           try {
-            await deleteNotification(id, "employer", employerId);
+            await deleteNotification(id);
             await loadNotifications();
           } catch (err) {
             alert(`Couldn't remove notification: ${err.message}`);
@@ -141,14 +92,21 @@
     document.getElementById("clearAllBtn").addEventListener("click", async () => {
       if (!confirm("Remove all notifications? This can't be undone.")) return;
       try {
-        await clearAllNotifications("employer", employerId);
+        await clearAllNotifications();
         await loadNotifications();
       } catch (err) {
         alert(`Couldn't clear notifications: ${err.message}`);
       }
     });
 
-    document.addEventListener("DOMContentLoaded", loadNotifications);
+    async function init() {
+      const account = await requireLogin("employer");
+      if (!account) return;
+      renderAccountBar("devUserBar", account);
+      await loadNotifications();
+    }
+
+    init();
   </script>
 </body>
 </html>

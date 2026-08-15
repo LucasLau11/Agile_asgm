@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, UploadFile, File, Request, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, Form, UploadFile, File, Request, HTTPException, Body
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from job_portal.database import get_db
 from job_portal.models import Application, Job, SeekerProfile, Notification
+from job_portal.routes.auth import get_current_account, get_current_account_optional, require_role
 from job_portal.services.credibility import compute_credibility_score
 
 router = APIRouter(tags=["Applications Core Engine"])
@@ -68,9 +69,18 @@ def _humanize(dt: Optional[datetime]) -> str:
 async def get_apply_page(
     request: Request,
     job_id: int,
-    seeker_id: int = 1,
+    account: Optional[dict] = Depends(get_current_account_optional),
     db: Session = Depends(get_db),
 ):
+    if account is None or account["role"] != "seeker":
+        # Reached by real browser navigation, not fetch() — a raw 401 JSON
+        # body here would show as literal text in the user's browser, and
+        # would also block apply_job.html's own requireLogin() script from
+        # ever loading (the template never gets sent). Redirect directly
+        # instead of relying on the frontend to handle a response it will
+        # never receive.
+        return RedirectResponse(url="/UI/html/login.html", status_code=303)
+
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="The targeted vacancy posting does not exist.")
@@ -80,7 +90,7 @@ async def get_apply_page(
     return templates.TemplateResponse(
         request=request,
         name="apply_job.html",
-        context={"job": job, "seeker_id": seeker_id},
+        context={"job": job},
     )
 
 
@@ -88,11 +98,15 @@ async def get_apply_page(
 async def handle_application(
     request: Request,
     job_id: int = Form(...),
-    seeker_id: int = Form(1),
     cover_letter: str = Form(None),
     resume: Optional[UploadFile] = File(None),
+    account: Optional[dict] = Depends(get_current_account_optional),
     db: Session = Depends(get_db)
 ):
+    if account is None or account["role"] != "seeker":
+        return RedirectResponse(url="/UI/html/login.html", status_code=303)
+    seeker_id = account["id"]
+
     job = db.query(Job).filter(Job.id == job_id).first()
 
     if resume and resume.filename:
@@ -125,7 +139,9 @@ async def handle_application(
 
 @router.get("/my-applications-fragment", response_class=HTMLResponse)
 async def get_applications_fragment(
-    request: Request, seeker_id: int = Query(1), db: Session = Depends(get_db)
+    request: Request,
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
 ):
     records = db.query(Application).filter(Application.seeker_id == seeker_id).all()
 
@@ -143,9 +159,13 @@ async def get_applications_fragment(
 
 
 @router.get("/api/applications")
-async def api_get_applications(seeker_id: int = Query(1), db: Session = Depends(get_db)):
-    """Consumed by my_application.html. This was the missing endpoint causing
-    'Failed to pull database entries'."""
+async def api_get_applications(
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
+):
+    """Consumed by my_application.html — returns only the logged-in
+    seeker's own applications; seeker_id comes from the session, never
+    from the client."""
     records = (
         db.query(Application)
         .filter(Application.seeker_id == seeker_id)
@@ -169,7 +189,10 @@ async def api_get_applications(seeker_id: int = Query(1), db: Session = Depends(
 
 
 @router.get("/api/employer/applications")
-async def api_employer_applications(employer_id: int = Query(1), db: Session = Depends(get_db)):
+async def api_employer_applications(
+    employer_id: int = Depends(require_role("employer", "Must be logged in as an employer.")),
+    db: Session = Depends(get_db),
+):
     """Consumed by employer_applications.html."""
     records = (
         db.query(Application)
@@ -195,14 +218,27 @@ async def api_employer_applications(employer_id: int = Query(1), db: Session = D
 
 
 @router.get("/api/employer/applicant/{application_id}")
-async def api_applicant_detail(application_id: int, db: Session = Depends(get_db)):
-    """Consumed by applicant_detail.html."""
-    app = db.query(Application).filter(Application.id == application_id).first()
+async def api_applicant_detail(
+    application_id: int,
+    employer_id: int = Depends(require_role("employer", "Must be logged in as an employer.")),
+    db: Session = Depends(get_db),
+):
+    """Consumed by applicant_detail.html. Previously had NO auth check at
+    all and no ownership scoping — any application id worked for anyone,
+    logged in or not. Now scoped to applications belonging to a job this
+    employer actually owns."""
+    app = (
+        db.query(Application)
+        .join(Job, Application.job_id == Job.id)
+        .filter(Application.id == application_id, Job.employer_id == employer_id)
+        .first()
+    )
     if not app:
         raise HTTPException(status_code=404, detail="Applicant record not found.")
 
     return JSONResponse(content={
         "id": app.id,
+        "seeker_id": app.seeker_id,
         "seeker": app.seeker_name,
         "email": app.email,
         "job_title": app.job.title if app.job else app.job_title,
@@ -229,6 +265,7 @@ _POSITION_FILLED_STAGE = "Offered"
 async def api_update_applicant_stage(
     application_id: int,
     body: StageUpdate = Body(...),
+    employer_id: int = Depends(require_role("employer", "Must be logged in as an employer.")),
     db: Session = Depends(get_db),
 ):
     """Consumed by applicant_detail.html's save button. Updates status/notes
@@ -239,8 +276,18 @@ async def api_update_applicant_stage(
     positions. Once positions_filled reaches positions_available, the
     listing auto-closes so it stops accepting new applicants — an employer
     hiring 1/1 shouldn't keep receiving applications for a role that's gone.
+
+    Previously had NO auth check at all — any application id could be
+    mutated by anyone, logged in or not, including the position-filled and
+    auto-close side effects. Now scoped to applications belonging to a job
+    this employer actually owns, same pattern as api_applicant_detail.
     """
-    app = db.query(Application).filter(Application.id == application_id).first()
+    app = (
+        db.query(Application)
+        .join(Job, Application.job_id == Job.id)
+        .filter(Application.id == application_id, Job.employer_id == employer_id)
+        .first()
+    )
     if not app:
         raise HTTPException(status_code=404, detail="Applicant record not found.")
 
@@ -286,21 +333,23 @@ async def api_update_applicant_stage(
 
 @router.get("/api/notifications")
 async def api_get_notifications(
-    seeker_id: int = Query(1),
-    role: Optional[str] = Query(None, pattern="^(seeker|employer)$"),
-    user_id: Optional[int] = Query(None),
+    account: dict = Depends(get_current_account),
     db: Session = Depends(get_db),
 ):
-    """Consumed by notifications.html, and also the generic role/user_id
-    shape used elsewhere (mirrors the delete endpoints below). When role
-    and user_id are both supplied, they take precedence — this lets the
-    same endpoint serve an employer's notifications too. Falls back to the
-    original seeker_id-only behavior for backward compatibility."""
-    if role is not None and user_id is not None:
-        column = Notification.seeker_id if role == "seeker" else Notification.employer_id
-        notif_filter = column == user_id
+    """Consumed by both notifications.html (seeker) and
+    employer_notifications.html (employer) — the same Notification table,
+    just a different owning column depending on the logged-in role. This
+    used to be a client-suppliable role/user_id combo (or a bare
+    seeker_id=1 default) — now identity comes only from the session, and
+    the separate /api/employer/notifications endpoint that used to exist
+    purely to work around that is gone (see api_get_employer_notifications
+    below, deleted)."""
+    if account["role"] == "seeker":
+        notif_filter = Notification.seeker_id == account["id"]
+    elif account["role"] == "employer":
+        notif_filter = Notification.employer_id == account["id"]
     else:
-        notif_filter = Notification.seeker_id == seeker_id
+        return JSONResponse(content=[])
 
     records = (
         db.query(Notification)
@@ -322,50 +371,24 @@ async def api_get_notifications(
     return JSONResponse(content=results)
 
 
-@router.get("/api/employer/notifications")
-async def api_get_employer_notifications(employer_id: int = Query(1), db: Session = Depends(get_db)):
-    """Employer-side equivalent of api_get_notifications, consumed by
-    employer_notifications.html. This didn't exist before — only the
-    seeker-side GET was wired up, even though Notification.employer_id
-    has been populated (e.g. by messages.py's _notify_recipient) since
-    the messaging module landed."""
-    records = (
-        db.query(Notification)
-        .filter(Notification.employer_id == employer_id)
-        .order_by(Notification.created_at.desc())
-        .all()
-    )
-
-    results = [
-        {
-            "id": n.id,
-            "title": n.title,
-            "message": n.message,
-            "time_ago": _humanize(n.created_at),
-        }
-        for n in records
-    ]
-
-    return JSONResponse(content=results)
-
-
 @router.delete("/api/notifications/{notification_id}")
 async def api_delete_notification(
     notification_id: int,
-    role: str = Query(..., pattern="^(seeker|employer)$"),
-    user_id: int = Query(...),
+    account: dict = Depends(get_current_account),
     db: Session = Depends(get_db),
 ):
     """Remove a single notification. Works for both seeker and employer
     notifications (same Notification table, just a different owning
-    column) — checks ownership so a seeker/employer can't delete someone
-    else's notification by guessing an id."""
+    column) — role and owner id now come from the session, not
+    client-suppliable query params."""
     notif = db.query(Notification).filter(Notification.id == notification_id).first()
     if not notif:
         raise HTTPException(status_code=404, detail="Notification not found.")
 
-    owner_id = notif.seeker_id if role == "seeker" else notif.employer_id
-    if owner_id != user_id:
+    if account["role"] not in ("seeker", "employer"):
+        raise HTTPException(status_code=403, detail="Notifications are only available to seekers and employers.")
+    owner_id = notif.seeker_id if account["role"] == "seeker" else notif.employer_id
+    if owner_id != account["id"]:
         raise HTTPException(status_code=403, detail="Not your notification.")
 
     db.delete(notif)
@@ -375,13 +398,14 @@ async def api_delete_notification(
 
 @router.delete("/api/notifications")
 async def api_clear_notifications(
-    role: str = Query(..., pattern="^(seeker|employer)$"),
-    user_id: int = Query(...),
+    account: dict = Depends(get_current_account),
     db: Session = Depends(get_db),
 ):
     """Clear-all convenience — same ownership scoping as the single-delete
     endpoint above, just applied to every matching row at once."""
-    column = Notification.seeker_id if role == "seeker" else Notification.employer_id
-    deleted = db.query(Notification).filter(column == user_id).delete()
+    if account["role"] not in ("seeker", "employer"):
+        raise HTTPException(status_code=403, detail="Notifications are only available to seekers and employers.")
+    column = Notification.seeker_id if account["role"] == "seeker" else Notification.employer_id
+    deleted = db.query(Notification).filter(column == account["id"]).delete()
     db.commit()
     return JSONResponse(content={"success": True, "deleted": deleted})

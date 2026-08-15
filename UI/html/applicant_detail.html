@@ -18,7 +18,6 @@
       <a href="/UI/html/messages.html?role=employer">Messages</a>
       <a href="/UI/html/employer_notifications.html">Notifications</a>
     </nav>
-    <a href="/UI/html/browse_job.html" class="role-switch">Job Seeker</a>
   </div>
 </header>
 
@@ -35,16 +34,6 @@
 
   <script src="../js/api.js"></script>
   <script>
-    const employerId = (typeof getCurrentEmployerId === "function") ? getCurrentEmployerId() : 1;
-    if (typeof renderDevEmployerBar === "function") {
-      renderDevEmployerBar("devUserBar");
-    } else {
-      document.getElementById("devUserBar").innerHTML = `
-        Acting as: Employer #${employerId} — ABC Technologies
-        <span style="opacity:0.75">(login stand-in for Sprint 1)</span>
-      `;
-    }
-
     const params = new URLSearchParams(window.location.search);
     const applicantId = params.get("id");
 
@@ -124,9 +113,7 @@
       }
 
       try {
-        const response = await fetch(`/api/employer/applicant/${applicantId}`);
-        if (!response.ok) throw new Error("Failed to pull database entries");
-        const applicant = await response.json();
+        const applicant = await fetchApplicantDetail(applicantId);
 
         container.innerHTML = applicantHtml(applicant);
 
@@ -157,12 +144,7 @@
       statusEl.classList.remove("error");
 
       try {
-        const response = await fetch(`/api/employer/applicant/${id}/update`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stage, notes }),
-        });
-        if (!response.ok) throw new Error("Failed to save changes");
+        await updateApplicantStage(id, { stage, notes });
 
         statusEl.textContent = "Recruitment stage updated successfully!";
         // Re-fetch and re-render so the stage timeline and dropdown reflect
@@ -178,7 +160,24 @@
       }
     }
 
-    document.addEventListener("DOMContentLoaded", loadApplicant);
+    async function init() {
+      const account = await requireLogin("employer");
+      if (!account) return;
+      renderAccountBar("devUserBar", account);
+      await loadApplicant();
+    }
+
+    init();
   </script>
+  <footer class="site-footer">
+  <div class="footer-content">
+    <p>&copy; 2026 Job Portal. All rights reserved.</p>
+    <nav class="footer-links">
+      <a href="/">Home</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+    </nav>
+  </div>
+</footer>
 </body>
 </html>

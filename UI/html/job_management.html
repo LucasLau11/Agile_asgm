@@ -16,8 +16,8 @@
       <a href="/UI/html/employer_applications.html">Applications</a>
       <a href="/UI/html/messages.html?role=employer">Messages</a>
       <a href="/UI/html/employer_notifications.html">Notifications</a>
+      <a href="/UI/html/employer_profile.html">Company Profile</a>
     </nav>
-    <a href="/UI/html/browse_job.html" class="role-switch">Job Seeker</a>
   </div>
 </header>
 
@@ -163,20 +163,7 @@ const COMMON_SKILLS = [
     "Machine Learning", "HTML/CSS",
 ];
 
-// Sprint 1 stand-in — no employer login yet. Reads whichever employer is
-// currently selected in the "Acting as" dropdown (see renderDevEmployerBar
-// in api.js), so switching employers actually changes which postings show
-// up here, instead of every session being stuck looking at employer #1.
-const employerId = getCurrentEmployerId();
-if (typeof renderDevEmployerBar === "function") {
-    renderDevEmployerBar("devUserBar");
-} else {
-    document.getElementById("devUserBar").innerHTML = `
-        Acting as: Employer #${employerId}
-        <span style="opacity:0.75">(login stand-in for Sprint 1)</span>
-    `;
-}
-
+let account = null;
 let jobs = [];               // populated from the backend — never hardcoded
 let formSkillsList = [];
 let editingJobId = null;     // null means "creating new"
@@ -197,7 +184,7 @@ async function loadJobs() {
     const backendStatus = statusValue === "active" ? "open" : statusValue;
 
     try {
-        jobs = await fetchEmployerJobs(employerId, { keyword: searchTerm, status: backendStatus });
+        jobs = await fetchEmployerJobs({ keyword: searchTerm, status: backendStatus });
         renderJobs();
     } catch (err) {
         list.innerHTML = `<div class="empty-state">Couldn't load job postings: ${escapeHtml(err.message)}</div>`;
@@ -500,9 +487,9 @@ async function saveJob() {
     setButtonBusy(saveBtn, true, "Saving…");
     try {
         if (editingJobId) {
-            await updateEmployerJob(employerId, editingJobId, payload);
+            await updateEmployerJob(editingJobId, payload);
         } else {
-            await createEmployerJob(employerId, payload);
+            await createEmployerJob(payload);
         }
         showOnly("listView");
         await loadJobs();
@@ -531,7 +518,7 @@ function findJob(id) {
 
 async function publishJob(id) {
     try {
-        await publishEmployerJob(employerId, id);
+        await publishEmployerJob(id);
         await loadJobs();
     } catch (err) {
         alert(`Couldn't publish this job: ${err.message}`);
@@ -546,7 +533,7 @@ async function closeJob(id) {
     if (!confirmed) return;
 
     try {
-        await closeEmployerJob(employerId, id);
+        await closeEmployerJob(id);
         await loadJobs();
     } catch (err) {
         alert(`Couldn't close this job: ${err.message}`);
@@ -561,7 +548,7 @@ async function deleteJob(id) {
     if (!confirmed) return;
 
     try {
-        await deleteEmployerJob(employerId, id);
+        await deleteEmployerJob(id);
         await loadJobs();
     } catch (err) {
         alert(`Couldn't delete this job: ${err.message}`);
@@ -586,9 +573,25 @@ document.getElementById("formSkillInput").addEventListener("keydown", (e) => {
     }
 });
 
-populateSkillDropdown();
-loadJobs();
-</script>
+async function init() {
+    account = await requireLogin("employer");
+    if (!account) return;
+    renderAccountBar("devUserBar", account);
+    populateSkillDropdown();
+    await loadJobs();
+}
 
+init();
+</script>
+<footer class="site-footer">
+  <div class="footer-content">
+    <p>&copy; 2026 Job Portal. All rights reserved.</p>
+    <nav class="footer-links">
+      <a href="/">Home</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+    </nav>
+  </div>
+</footer>
 </body>
 </html>

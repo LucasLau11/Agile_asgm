@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Log In</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Job Portal</div>
+  </header>
+
+  <main class="page" style="max-width: 420px;">
+    <h1>Log in</h1>
+    <p class="subtitle">Enter your email and password to access your account.</p>
+
+    <section class="profile-section">
+      <form id="loginForm" novalidate>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="emailInput">Email</label>
+          <input type="email" id="emailInput" required />
+          <div class="field-error" id="emailError"></div>
+        </div>
+        <div class="form-field" style="margin-bottom:16px;">
+          <label for="passwordInput">Password</label>
+          <input type="password" id="passwordInput" required />
+          <div class="field-error" id="passwordError"></div>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Log in</button>
+        <p class="status-msg" id="loginStatus"></p>
+      </form>
+      <p class="subtitle" style="margin-top:12px; margin-bottom:0;">
+        <a href="reset_password.html">Forgot password?</a>
+      </p>
+      <p class="subtitle" style="margin-top:16px; margin-bottom:0;">
+        Don't have an account? <a href="register.html">Register</a>
+      </p>
+    </section>
+  </main>
+
+  <script src="../js/api.js"></script>
+  <script>
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const emailEl = document.getElementById("emailInput");
+      const passwordEl = document.getElementById("passwordInput");
+      const statusEl = document.getElementById("loginStatus");
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+
+      document.getElementById("emailError").textContent = "";
+      document.getElementById("passwordError").textContent = "";
+      statusEl.textContent = "";
+
+      const email = emailEl.value.trim();
+      const password = passwordEl.value;
+      if (!email) {
+        document.getElementById("emailError").textContent = "Email is required.";
+        return;
+      }
+      if (!password) {
+        document.getElementById("passwordError").textContent = "Password is required.";
+        return;
+      }
+
+      setButtonBusy(submitBtn, true, "Logging in…");
+      try {
+        const account = await loginAccount(email, password);
+        statusEl.textContent = `Logged in as ${account.display_name} (${account.role}). Redirecting…`;
+        statusEl.className = "status-msg success";
+        const destination =
+          account.role === "seeker" ? "/UI/html/profile.html" :
+          account.role === "admin" ? "/UI/html/admin_dashboard.html" :
+          "/UI/html/job_management.html";
+        setTimeout(() => { window.location.href = destination; }, 600);
+      } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.className = "status-msg error";
+      } finally {
+        setButtonBusy(submitBtn, false);
+      }
+    });
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+

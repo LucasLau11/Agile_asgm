@@ -9,10 +9,13 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from job_portal.database import Base, engine
+from job_portal.routes.admin import router as admin_router
 from job_portal.routes.seeker import router as seeker_router
-from job_portal.routes.applications import router as applications_router  
+from job_portal.routes.applications import router as applications_router
 from job_portal.routes.employer import router as employer_router
+from job_portal.routes.employer_profile import router as employer_profile_router
 from job_portal.routes.messages import router as messages_router
+from job_portal.routes.auth import router as auth_router
 
 app = FastAPI(title="Job Portal Architecture", version="0.1.0")
 
@@ -39,6 +42,13 @@ def _ensure_columns(table: str, columns: dict) -> None:
 
 _ensure_columns("notifications", {"employer_id": "INTEGER"})
 _ensure_columns(
+    "seeker_profiles",
+    {
+        "hashed_password": "VARCHAR",
+        "status": "VARCHAR(20) DEFAULT 'active'",
+    },
+)
+_ensure_columns(
     "messages",
     {
         "edited_at": "DATETIME",
@@ -60,14 +70,54 @@ _ensure_columns(
         "blocked_by_employer": "INTEGER DEFAULT 0",
     },
 )
+_ensure_columns(
+    "seeker_profiles",
+    {
+        "email_confirmed": "INTEGER DEFAULT 0",
+        "confirmation_token": "VARCHAR",
+        "confirmation_token_expires": "DATETIME",
+        "reset_token": "VARCHAR",
+        "reset_token_expires": "DATETIME",
+        "profile_picture_filename": "VARCHAR(255)",
+        "profile_picture_url": "VARCHAR(500)",
+    },
+)
+_ensure_columns(
+    "employers",
+    {
+        "reset_token": "VARCHAR",
+        "reset_token_expires": "DATETIME",
+    },
+)
+_ensure_columns(
+    "employers",
+    {
+        "description": "TEXT",
+        "industry": "VARCHAR(100)",
+        "website": "VARCHAR(200)",
+        "registration_number": "VARCHAR(100)",
+        "verification_status": "VARCHAR(20) DEFAULT 'pending'",
+        "verification_document_filename": "VARCHAR(255)",
+        "verification_document_path": "VARCHAR(500)",
+        "verification_submitted_at": "DATETIME",
+        "verified_at": "DATETIME",
+        "verified_by_admin_id": "INTEGER",
+        "rejection_reason": "TEXT",
+    },
+)
+
 
 app.include_router(seeker_router)
-app.include_router(applications_router)  
+app.include_router(applications_router)
 app.include_router(employer_router)
+app.include_router(employer_profile_router)
 app.include_router(messages_router)
+app.include_router(auth_router)
+app.include_router(admin_router)
 
 app.mount("/UI", StaticFiles(directory="UI"), name="UI")
 
 os.makedirs("uploads/resumes", exist_ok=True)
 os.makedirs("uploads/messages", exist_ok=True)
+os.makedirs("uploads/profile_pictures", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

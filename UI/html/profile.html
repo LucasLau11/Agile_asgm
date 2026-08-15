@@ -18,7 +18,6 @@
       <a href="/UI/html/notifications.html">Notifications</a>
       <a href="/UI/html/profile.html">Profile</a>
     </nav>
-    <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
   </div>
 </header>
   <div class="dev-user-bar" id="devUserBar"></div>
@@ -178,6 +177,52 @@
       <div id="resumeCurrent"></div>
       <div id="scanResumeContainer"></div>
     </section>
+
+    <!-- Profile Picture -->
+    <section class="profile-section">
+      <h2>Profile Picture</h2>
+      <div id="profilePictureContainer"></div>
+      <label class="resume-drop" for="profilePictureInput" style="display:block; cursor:pointer;">
+        Click to choose an image file (JPG, PNG, max 5&nbsp;MB)
+      </label>
+      <input type="file" id="profilePictureInput" accept=".jpg,.jpeg,.png" style="display:none" />
+      <p class="status-msg" id="profilePictureStatus"></p>
+    </section>
+
+    <!-- Change Password -->
+    <section class="profile-section">
+      <div class="section-header-row">
+        <h2>Change Password</h2>
+      </div>
+      <form id="changePasswordForm" novalidate>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="currentPasswordInput">Current password *</label>
+          <input type="password" id="currentPasswordInput" required />
+          <div class="field-error" id="currentPasswordError"></div>
+        </div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="newPasswordInput">New password *</label>
+          <input type="password" id="newPasswordInput" required />
+          <div class="field-error" id="newPasswordError"></div>
+        </div>
+        <div class="form-field" style="margin-bottom:12px;">
+          <label for="confirmPasswordInput">Confirm new password *</label>
+          <input type="password" id="confirmPasswordInput" required />
+          <div class="field-error" id="confirmPasswordError"></div>
+        </div>
+        <button type="submit" class="btn btn-primary">Change Password</button>
+      </form>
+      <p class="status-msg" id="changePasswordStatus"></p>
+    </section>
+
+    <!-- Delete Account -->
+    <section class="profile-section" style="border-top:1px solid #e0e0e0; margin-top:32px; padding-top:32px;">
+      <h2 style="color:#d32f2f;">Delete Account</h2>
+      <p class="subtitle">Once you delete your account, there is no going back. Please be certain.</p>
+      <button type="button" class="btn btn-secondary" id="deleteAccountBtn" style="background-color:#d32f2f; color:white;">Delete My Account</button>
+      <p class="status-msg" id="deleteAccountStatus"></p>
+    </section>
+
   <div id="applicationsTrackerContainer"></div>
   </main>
 
@@ -195,10 +240,16 @@
 
   <script src="../js/api.js"></script>
   <script>
-    renderDevUserBar("devUserBar");
-    const seekerId = getCurrentSeekerId();
-
     let profileData = null; // holds the full profile response between renders
+    let account = null; // the logged-in seeker's account (role, id, email, display_name)
+
+    async function init() {
+      account = await requireLogin("seeker");
+      if (!account) return;
+      renderAccountBar("devUserBar", account);
+      await loadProfile();
+      await injectApplicationsTracker();
+    }
 
     // ============================ Personal info ============================
 
@@ -301,7 +352,7 @@
       if (!validateInfoForm()) return;
       setButtonBusy(submitBtn, true, "Saving…");
       try {
-        profileData = await updateProfileInfo(seekerId, {
+        profileData = await updateProfileInfo({
           full_name: document.getElementById("fullNameInput").value.trim(),
           email: document.getElementById("emailInput").value.trim(),
           phone: document.getElementById("phoneInput").value.trim(),
@@ -351,7 +402,7 @@
     async function saveSkills(skills) {
       const statusEl = document.getElementById("skillsStatus");
       try {
-        profileData = await updateSeekerSkills(seekerId, skills);
+        profileData = await updateSeekerSkills(skills);
         renderSkills();
         statusEl.textContent = "Skills saved.";
         statusEl.className = "status-msg success";
@@ -397,7 +448,7 @@
 
       listEl.querySelectorAll(".entry-delete").forEach((btn) => {
         btn.addEventListener("click", async () => {
-          profileData = await deleteExperience(seekerId, btn.dataset.id);
+          profileData = await deleteExperience(btn.dataset.id);
           renderExperience();
         });
       });
@@ -450,7 +501,7 @@
         return;
       }
 
-      profileData = await addExperience(seekerId, {
+      profileData = await addExperience({
         job_title: document.getElementById("expTitleInput").value.trim(),
         company_name: document.getElementById("expCompanyInput").value.trim(),
         start_date: combineDateSelects(startMonth, startYear),
@@ -492,7 +543,7 @@
 
       listEl.querySelectorAll(".entry-delete").forEach((btn) => {
         btn.addEventListener("click", async () => {
-          profileData = await deleteEducation(seekerId, btn.dataset.id);
+          profileData = await deleteEducation(btn.dataset.id);
           renderEducation();
         });
       });
@@ -524,7 +575,7 @@
     document.getElementById("educationForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const isCurrent = document.getElementById("eduCurrentCheckbox").checked;
-      profileData = await addEducation(seekerId, {
+      profileData = await addEducation({
         institution: document.getElementById("eduInstitutionInput").value.trim(),
         degree: document.getElementById("eduDegreeInput").value,
         field_of_study: document.getElementById("eduFieldInput").value,
@@ -607,7 +658,7 @@
       const panel = document.getElementById("scanResultsPanel");
       panel.innerHTML = `<p class="status-msg" style="margin-top:10px;">Scanning your resume…</p>`;
       try {
-        const suggestions = await scanResume(seekerId);
+        const suggestions = await scanResume();
 
         if (!suggestions.text_extracted) {
           panel.innerHTML = `
@@ -715,7 +766,7 @@
                 return;
               }
 
-              profileData = await updateProfileInfo(seekerId, {
+              profileData = await updateProfileInfo({
                 full_name: mergedName,
                 email: mergedEmail,
                 phone: mergedPhone,
@@ -725,7 +776,7 @@
             }
 
             if (checked("skills") && newSkills.length > 0) {
-              profileData = await updateSeekerSkills(seekerId, [...profileData.skills, ...newSkills]);
+              profileData = await updateSeekerSkills([...profileData.skills, ...newSkills]);
               renderSkills();
             }
 
@@ -736,7 +787,7 @@
               .map((el) => Number(el.dataset.index));
             for (const i of checkedExperienceIndexes) {
               const exp = suggestions.experience[i];
-              profileData = await addExperience(seekerId, {
+              profileData = await addExperience({
                 job_title: exp.job_title || "Untitled role",
                 company_name: exp.company_name || "Unknown company",
                 start_date: exp.start_date,
@@ -750,7 +801,7 @@
               .map((el) => Number(el.dataset.index));
             for (const i of checkedEducationIndexes) {
               const edu = suggestions.education[i];
-              profileData = await addEducation(seekerId, {
+              profileData = await addEducation({
                 institution: edu.institution || "Unknown institution",
                 degree: edu.degree,
                 field_of_study: edu.field_of_study,
@@ -808,7 +859,7 @@
       statusEl.textContent = "Uploading…";
       statusEl.className = "status-msg";
       try {
-        profileData = await uploadResume(seekerId, file);
+        profileData = await uploadResume(file);
         renderResumeCurrent();
         statusEl.textContent = "Resume uploaded.";
         statusEl.className = "status-msg success";
@@ -818,24 +869,188 @@
       }
     });
 
+    // ============================ Profile Picture ============================
+
+    function renderProfilePictureDisplay() {
+      const el = document.getElementById("profilePictureContainer");
+      if (!profileData.profile_picture_filename) {
+        el.innerHTML = `
+          <div class="file-card-v2">
+            <img src="${DEFAULT_PROFILE_IMAGE_URL}" style="width:80px; height:80px; border-radius:50%; object-fit:cover;" alt="Default profile picture" />
+            <div class="file-info" style="flex:1; margin-left:12px;">
+              <div class="file-name">Default profile picture</div>
+              <div class="file-type-meta">Upload an image below to replace it</div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      const filename = profileData.profile_picture_filename;
+      el.innerHTML = `
+        <div class="file-card-v2">
+          <img src="${escapeHtml(profileData.profile_picture_url)}" style="width:80px; height:80px; border-radius:50%; object-fit:cover;" alt="Profile picture" />
+          <div class="file-info" style="flex:1; margin-left:12px;">
+            <div class="file-name">${escapeHtml(filename)}</div>
+            <div class="file-type-meta">Profile picture</div>
+          </div>
+        </div>
+      `;
+    }
+
+    document.getElementById("profilePictureInput").addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const statusEl = document.getElementById("profilePictureStatus");
+      statusEl.textContent = "";
+      statusEl.className = "status-msg";
+
+      const lowerName = file.name.toLowerCase();
+      if (!lowerName.endsWith(".jpg") && !lowerName.endsWith(".jpeg") && !lowerName.endsWith(".png")) {
+        statusEl.textContent = "Upload failed: only JPG or PNG files are accepted.";
+        statusEl.className = "status-msg error";
+        e.target.value = "";
+        return;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        statusEl.textContent = "Upload failed: file must be under 5 MB.";
+        statusEl.className = "status-msg error";
+        e.target.value = "";
+        return;
+      }
+
+      statusEl.textContent = "Uploading…";
+      try {
+        profileData = await uploadProfilePicture(file);
+        renderProfilePictureDisplay();
+        setSeekerNavAvatar(profileData);
+        statusEl.textContent = "Profile picture uploaded.";
+        statusEl.className = "status-msg success";
+      } catch (err) {
+        statusEl.textContent = `Upload failed: ${err.message}`;
+        statusEl.className = "status-msg error";
+      }
+    });
+
+    // ============================ Change Password ============================
+
+    document.getElementById("changePasswordForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const statusEl = document.getElementById("changePasswordStatus");
+      const currentPasswordError = document.getElementById("currentPasswordError");
+      const newPasswordError = document.getElementById("newPasswordError");
+      const confirmPasswordError = document.getElementById("confirmPasswordError");
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+
+      statusEl.textContent = "";
+      statusEl.className = "status-msg";
+      currentPasswordError.textContent = "";
+      newPasswordError.textContent = "";
+      confirmPasswordError.textContent = "";
+
+      const currentPassword = document.getElementById("currentPasswordInput").value;
+      const newPassword = document.getElementById("newPasswordInput").value;
+      const confirmPassword = document.getElementById("confirmPasswordInput").value;
+
+      let valid = true;
+
+      if (!currentPassword) {
+        currentPasswordError.textContent = "Current password is required.";
+        valid = false;
+      }
+
+      if (!newPassword) {
+        newPasswordError.textContent = "New password is required.";
+        valid = false;
+      } else if (newPassword.length < 8) {
+        newPasswordError.textContent = "Password must be at least 8 characters.";
+        valid = false;
+      } else if (newPassword === currentPassword) {
+        newPasswordError.textContent = "New password must be different from current password.";
+        valid = false;
+      }
+
+      if (!confirmPassword) {
+        confirmPasswordError.textContent = "Confirm password is required.";
+        valid = false;
+      } else if (confirmPassword !== newPassword) {
+        confirmPasswordError.textContent = "Passwords do not match.";
+        valid = false;
+      }
+
+      if (!valid) return;
+
+      setButtonBusy(submitBtn, true, "Changing…");
+      try {
+        await changePassword(currentPassword, newPassword);
+        statusEl.textContent = "Password changed successfully.";
+        statusEl.className = "status-msg success";
+        e.target.reset();
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+        statusEl.className = "status-msg error";
+      } finally {
+        setButtonBusy(submitBtn, false);
+      }
+    });
+
+    // ============================ Delete Account ============================
+
+    document.getElementById("deleteAccountBtn").addEventListener("click", async () => {
+      const confirmed = confirm("Are you sure you want to delete your account? This action cannot be undone.");
+      if (!confirmed) return;
+
+      const passwordPrompt = prompt("Please enter your password to confirm account deletion:");
+      if (passwordPrompt === null) return; // User cancelled
+
+      if (!passwordPrompt) {
+        alert("Password is required to delete your account.");
+        return;
+      }
+
+      const statusEl = document.getElementById("deleteAccountStatus");
+      const btn = document.getElementById("deleteAccountBtn");
+
+      setButtonBusy(btn, true, "Deleting…");
+      statusEl.textContent = "";
+      statusEl.className = "status-msg";
+
+      try {
+        await deleteMyAccount(passwordPrompt);
+        statusEl.textContent = "Account deleted. Redirecting to home page…";
+        statusEl.className = "status-msg success";
+        setTimeout(() => {
+          window.location.href = "/UI/html/login.html";
+        }, 2000);
+      } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+        statusEl.className = "status-msg error";
+        setButtonBusy(btn, false);
+      }
+    });
+
     // ============================ Initial load ============================
 
     async function loadProfile() {
       try {
-        profileData = await fetchSeekerProfile(seekerId);
+        profileData = await fetchSeekerProfile();
         renderInfoDisplay();
         renderSkills();
         renderExperience();
         renderEducation();
         renderResumeCurrent();
+        renderProfilePictureDisplay();
       } catch (err) {
         document.getElementById("skillsStatus").textContent = `Couldn't load profile: ${err.message}`;
         document.getElementById("skillsStatus").className = "status-msg error";
       }
     }
+
     async function injectApplicationsTracker() {
       try {
-        const response = await fetch(`/my-applications-fragment?seeker_id=${seekerId}`);
+        const response = await fetch(`/my-applications-fragment`, { credentials: "include" });
         if (response.ok) {
           document.getElementById('applicationsTrackerContainer').innerHTML = await response.text();
         }
@@ -843,9 +1058,18 @@
         console.error("Unable to cross-mount structural applications table log:", err);
       }
     }
-    // Fire injection on load lifecycle hooks
-    window.addEventListener('DOMContentLoaded', injectApplicationsTracker);
-    loadProfile();
+
+    init();
   </script>
+  <footer class="site-footer">
+  <div class="footer-content">
+    <p>&copy; 2026 Job Portal. All rights reserved.</p>
+    <nav class="footer-links">
+      <a href="/">Home</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+    </nav>
+  </div>
+</footer>
 </body>
 </html>

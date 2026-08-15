@@ -17,7 +17,6 @@
       <a href="/UI/html/notifications.html">Notifications</a>
       <a href="/UI/html/profile.html">Profile</a>
     </nav>
-    <a href="/UI/html/job_management.html" class="role-switch">Employer</a>
   </div>
 </header>
   <div class="dev-user-bar" id="devUserBar"></div>
@@ -40,6 +39,8 @@ renderDevUserBar("devUserBar");
         return;
       }
       try {
+        const account = await getCurrentAccount();
+        const seekerId = account && account.role === "seeker" ? account.id : null;
         const job = await fetchJob(jobId, seekerId);
         const spotsLabel =
           job.positions_remaining === 0
@@ -81,6 +82,7 @@ renderDevUserBar("devUserBar");
           <div class="detail-header" style="margin-top:14px">
             <div>
               <h1>${escapeHtml(job.title)} ${matchBadge}</h1>
+              <p class="subtitle"><a href="/UI/html/company_detail.html?id=${job.employer_id}" style="color:inherit; text-decoration:none; border-bottom:1px solid #0066cc; cursor:pointer;">${escapeHtml(job.employer_name || "Employer")}</a> ${job.employer_verified ? '<span class="skill-tag">✓ Verified employer</span>' : '<span class="skill-tag missing">Unverified employer</span>'}</p>
               <p class="subtitle" style="margin-bottom:4px;">
                 ${escapeHtml(job.location || "Location not specified")}
                 &nbsp;•&nbsp; ${escapeHtml(job.job_type || "Full-time")}
@@ -128,5 +130,15 @@ document.getElementById("messageEmployerBtn").addEventListener("click", () => {
 
     loadJob();
   </script>
+  <footer class="site-footer">
+  <div class="footer-content">
+    <p>&copy; 2026 Job Portal. All rights reserved.</p>
+    <nav class="footer-links">
+      <a href="/">Home</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+    </nav>
+  </div>
+</footer>
 </body>
 </html>

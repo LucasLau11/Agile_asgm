@@ -6,8 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from job_portal.database import get_db
-from job_portal.models import Education, Job, SeekerProfile, WorkExperience
+from job_portal.models import Education, Employer, Job, SeekerProfile, WorkExperience
+from job_portal.routes.auth import get_current_account_optional, require_role
 from job_portal.schemas import (
+    CompanyDetailOut,
     EducationIn,
     EducationOut,
     ExperienceIn,
@@ -24,14 +26,16 @@ from job_portal.services.file_validation import (
     ALLOWED_EXTENSIONS,
     MAX_RESUME_SIZE_BYTES,
     detect_safe_extension,
+    detect_safe_message_attachment,
     sanitize_display_filename,
 )
 from job_portal.services.resume_parser import parse_resume
 
 router = APIRouter(tags=["seeker"])
 
-# Where uploaded resumes get stored local disk.
+# Where uploaded resumes and profile pictures get stored on disk.
 RESUME_UPLOAD_DIR = os.getenv("RESUME_UPLOAD_DIR", "uploads/resumes")
+PROFILE_PICTURE_UPLOAD_DIR = os.getenv("PROFILE_PICTURE_UPLOAD_DIR", "uploads/profile_pictures")
 
 # fetch a seeker's profile, creating an empty one if it doesn't exist yet.
 def _get_or_create_profile(db: Session, seeker_id: int) -> SeekerProfile:
@@ -52,15 +56,20 @@ def list_jobs(
     state: Optional[str] = None,
     job_type: Optional[str] = None,
     salary_min: Optional[int] = None,
-    seeker_id: Optional[int] = None,
     sort_by: Optional[str] = None,
+    account: Optional[dict] = Depends(get_current_account_optional),
     db: Session = Depends(get_db),
 ) -> List[JobOut]:
     """
     sort_by: "newest" (default), "salary_high", "salary_low", or "match"
-    ("match" only has an effect when seeker_id is also supplied — otherwise
+    ("match" only has an effect when logged in as a seeker — otherwise
     there's nothing to sort by, so it silently falls back to "newest").
+
+    Stays fully public: browsing never requires login. When a seeker IS
+    logged in, results are personalized with match data automatically —
+    no client-suppliable id is accepted or needed.
     """
+    seeker_id: Optional[int] = account["id"] if account is not None and account["role"] == "seeker" else None
     query = db.query(Job).filter(Job.status == "open")
 
     if keyword:
@@ -95,6 +104,7 @@ def list_jobs(
 
     results = []
     for job in jobs:
+        employer = db.query(Employer).filter(Employer.id == job.employer_id).first()
         match_percentage = None
         missing_skills: List[str] = []
         if seeker_id is not None:
@@ -108,6 +118,7 @@ def list_jobs(
                 credibility_reasons=compute_credibility_reasons(job, db),
                 match_percentage=match_percentage,
                 missing_skills=missing_skills,
+                employer=employer,
             )
         )
 
@@ -118,12 +129,13 @@ def list_jobs(
 
 @router.get("/api/jobs/recommended", response_model=List[JobOut])
 def recommended_jobs(
-    seeker_id: int,
     min_match: int = 1,
     limit: int = 10,
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
     db: Session = Depends(get_db),
 ) -> List[JobOut]:
-    
+    """Recommendations require login — there's no sensible anonymous
+    recommendation, unlike list_jobs/get_job which stay public."""
     profile = db.query(SeekerProfile).filter(SeekerProfile.seeker_id == seeker_id).first()
     seeker_skills = profile.skills_list() if profile else []
     if not seeker_skills:
@@ -144,13 +156,19 @@ def recommended_jobs(
             credibility_reasons=compute_credibility_reasons(job, db),
             match_percentage=match["match_percentage"],
             missing_skills=match["missing_skills"],
+            employer=db.query(Employer).filter(Employer.id == job.employer_id).first(),
         )
         for match, job in scored[:limit]
     ]
 
 
 @router.get("/api/jobs/{job_id}", response_model=JobOut)
-def get_job(job_id: int, seeker_id: Optional[int] = None, db: Session = Depends(get_db)) -> JobOut:
+def get_job(
+    job_id: int,
+    account: Optional[dict] = Depends(get_current_account_optional),
+    db: Session = Depends(get_db),
+) -> JobOut:
+    seeker_id: Optional[int] = account["id"] if account is not None and account["role"] == "seeker" else None
     job = db.query(Job).filter(Job.id == job_id).first()
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -170,21 +188,50 @@ def get_job(job_id: int, seeker_id: Optional[int] = None, db: Session = Depends(
         credibility_reasons=compute_credibility_reasons(job, db),
         match_percentage=match_percentage,
         missing_skills=missing_skills,
+        employer=db.query(Employer).filter(Employer.id == job.employer_id).first(),
     )
 
-@router.get("/api/seekers/{seeker_id}", response_model=SeekerProfileOut)
-def get_seeker_profile(seeker_id: int, db: Session = Depends(get_db)) -> SeekerProfileOut:
-    """Fetch a seeker's profile (creates an empty one if this is their first visit)."""
+@router.get("/api/seekers/me", response_model=SeekerProfileOut)
+def get_seeker_profile(
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
+) -> SeekerProfileOut:
+    """Fetch the logged-in seeker's own profile (creates an empty one if
+    this is their first visit — registration doesn't pre-populate bio/phone/etc)."""
     profile = _get_or_create_profile(db, seeker_id)
     return SeekerProfileOut.from_profile(profile)
 
 
-@router.put("/api/seekers/{seeker_id}", response_model=SeekerProfileOut)
+@router.put("/api/seekers/me", response_model=SeekerProfileOut)
 def update_profile_info(
-    seeker_id: int, payload: ProfileInfoUpdate, db: Session = Depends(get_db)
+    payload: ProfileInfoUpdate,
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
-    """Update personal info (name, email, phone, bio) — the 'real profile' fields."""
+    """Update personal info (name, email, phone, bio) — the 'real profile' fields.
+
+    Since `email` doubles as the login identifier (see routes/auth.py), an
+    update that would hand it to a different already-registered account is
+    rejected — otherwise a seeker could lock another user out of their own
+    login just by typing that user's email into their own profile form.
+    """
     profile = _get_or_create_profile(db, seeker_id)
+
+    new_email = payload.email.strip().lower()
+    if new_email != (profile.email or "").strip().lower():
+        from job_portal.models import Admin, Employer
+
+        email_taken = (
+            db.query(SeekerProfile)
+            .filter(SeekerProfile.email == new_email, SeekerProfile.seeker_id != seeker_id)
+            .first()
+            is not None
+            or db.query(Employer).filter(Employer.email == new_email).first() is not None
+            or db.query(Admin).filter(Admin.email == new_email).first() is not None
+        )
+        if email_taken:
+            raise HTTPException(status_code=409, detail="An account with this email already exists.")
+
     profile.full_name = payload.full_name
     profile.email = payload.email
     profile.phone = payload.phone
@@ -194,9 +241,11 @@ def update_profile_info(
     return SeekerProfileOut.from_profile(profile)
 
 
-@router.put("/api/seekers/{seeker_id}/skills", response_model=SeekerProfileOut)
+@router.put("/api/seekers/me/skills", response_model=SeekerProfileOut)
 def update_skills(
-    seeker_id: int, payload: SkillsUpdate, db: Session = Depends(get_db)
+    payload: SkillsUpdate,
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
     """US-22: Replace the seeker's skill list so job matching can use it."""
     profile = _get_or_create_profile(db, seeker_id)
@@ -206,10 +255,12 @@ def update_skills(
     db.refresh(profile)
     return SeekerProfileOut.from_profile(profile)
 
-# Work experience 
-@router.post("/api/seekers/{seeker_id}/experience", response_model=SeekerProfileOut, status_code=201)
+# Work experience
+@router.post("/api/seekers/me/experience", response_model=SeekerProfileOut, status_code=201)
 def add_experience(
-    seeker_id: int, payload: ExperienceIn, db: Session = Depends(get_db)
+    payload: ExperienceIn,
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
     profile = _get_or_create_profile(db, seeker_id)
     entry = WorkExperience(seeker_profile_id=profile.id, **payload.model_dump())
@@ -219,9 +270,11 @@ def add_experience(
     return SeekerProfileOut.from_profile(profile)
 
 
-@router.delete("/api/seekers/{seeker_id}/experience/{experience_id}", response_model=SeekerProfileOut)
+@router.delete("/api/seekers/me/experience/{experience_id}", response_model=SeekerProfileOut)
 def delete_experience(
-    seeker_id: int, experience_id: int, db: Session = Depends(get_db)
+    experience_id: int,
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
     profile = _get_or_create_profile(db, seeker_id)
     entry = (
@@ -238,9 +291,11 @@ def delete_experience(
 
 
 # Education
-@router.post("/api/seekers/{seeker_id}/education", response_model=SeekerProfileOut, status_code=201)
+@router.post("/api/seekers/me/education", response_model=SeekerProfileOut, status_code=201)
 def add_education(
-    seeker_id: int, payload: EducationIn, db: Session = Depends(get_db)
+    payload: EducationIn,
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
     profile = _get_or_create_profile(db, seeker_id)
     entry = Education(seeker_profile_id=profile.id, **payload.model_dump())
@@ -250,9 +305,11 @@ def add_education(
     return SeekerProfileOut.from_profile(profile)
 
 
-@router.delete("/api/seekers/{seeker_id}/education/{education_id}", response_model=SeekerProfileOut)
+@router.delete("/api/seekers/me/education/{education_id}", response_model=SeekerProfileOut)
 def delete_education(
-    seeker_id: int, education_id: int, db: Session = Depends(get_db)
+    education_id: int,
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
     profile = _get_or_create_profile(db, seeker_id)
     entry = (
@@ -269,11 +326,12 @@ def delete_education(
 
 
 # US-03 — Upload resume
-@router.post("/api/seekers/{seeker_id}/resume", response_model=SeekerProfileOut, status_code=201)
+@router.post("/api/seekers/me/resume", response_model=SeekerProfileOut, status_code=201)
 async def upload_resume(
-    seeker_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)
+    file: UploadFile = File(...),
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
 ) -> SeekerProfileOut:
-
     contents = await file.read()
 
     if len(contents) > MAX_RESUME_SIZE_BYTES:
@@ -302,13 +360,52 @@ async def upload_resume(
     return SeekerProfileOut.from_profile(profile)
 
 
-@router.get("/api/seekers/{seeker_id}/resume/parse", response_model=ParsedResumeOut)
-def parse_seeker_resume(seeker_id: int, db: Session = Depends(get_db)) -> ParsedResumeOut:
+@router.post("/api/seekers/me/profile-picture", response_model=SeekerProfileOut, status_code=201)
+async def upload_profile_picture(
+    file: UploadFile = File(...),
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
+) -> SeekerProfileOut:
+    """US-72: upload a profile picture for the seeker's public profile."""
+    contents = await file.read()
+    if len(contents) > MAX_RESUME_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="Profile picture must be under 5 MB.")
+
+    detected = detect_safe_message_attachment(contents)
+    if detected is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Profile picture must be a genuine JPG, PNG, GIF, or WEBP image.",
+        )
+    extension, _ = detected
+
+    os.makedirs(PROFILE_PICTURE_UPLOAD_DIR, exist_ok=True)
+    stored_name = f"{seeker_id}_{uuid.uuid4().hex}{extension}"
+    stored_path = os.path.join(PROFILE_PICTURE_UPLOAD_DIR, stored_name)
+
+    with open(stored_path, "wb") as f:
+        f.write(contents)
+
+    profile = _get_or_create_profile(db, seeker_id)
+    if profile.profile_picture_url and os.path.exists(profile.profile_picture_url):
+        os.remove(profile.profile_picture_url)
+    profile.profile_picture_filename = sanitize_display_filename(file.filename)
+    profile.profile_picture_url = stored_path
+    db.commit()
+    db.refresh(profile)
+    return SeekerProfileOut.from_profile(profile)
+
+
+@router.get("/api/seekers/me/resume/parse", response_model=ParsedResumeOut)
+def parse_seeker_resume(
+    seeker_id: int = Depends(require_role("seeker", "Must be logged in as a job seeker.")),
+    db: Session = Depends(get_db),
+) -> ParsedResumeOut:
     """
-    Scan the seeker's already-uploaded resume and extract suggested profile
-    data (name, email, phone, skills) using lightweight text extraction +
-    pattern matching (see services/resume_parser.py for the full approach
-    and its honest limitations).
+    Scan the logged-in seeker's already-uploaded resume and extract
+    suggested profile data (name, email, phone, skills) using lightweight
+    text extraction + pattern matching (see services/resume_parser.py for
+    the full approach and its honest limitations).
     """
     profile = db.query(SeekerProfile).filter(SeekerProfile.seeker_id == seeker_id).first()
     if profile is None or not profile.resume_url:
@@ -335,3 +432,15 @@ def parse_seeker_resume(seeker_id: int, db: Session = Depends(get_db)) -> Parsed
         education=result.education,
         text_extracted=result.raw_text_extracted,
     )
+
+
+@router.get("/api/companies/{employer_id}", response_model=CompanyDetailOut)
+def get_company_detail(
+    employer_id: int,
+    db: Session = Depends(get_db),
+) -> CompanyDetailOut:
+    """US-19: public company detail page for job seekers."""
+    employer = db.query(Employer).filter(Employer.id == employer_id).first()
+    if employer is None:
+        raise HTTPException(status_code=404, detail="Company not found.")
+    return CompanyDetailOut.from_employer(employer)

@@ -51,8 +51,28 @@ class SeekerProfile(Base):
     resume_filename = Column(String(255), nullable=True)
     resume_url = Column(String(500), nullable=True)
     skills = Column(Text, nullable=True, default="")
+    hashed_password = Column(String, nullable=True)
+    status = Column(String(20), nullable=False, default="active")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # US-68: email confirmation. email_confirmed starts at 0 on
+    # registration; confirmation_token is a one-time opaque value mailed
+    # to the seeker and cleared once used (or regenerated on resend).
+    email_confirmed = Column(Integer, nullable=False, default=0)
+    confirmation_token = Column(String, nullable=True)
+    confirmation_token_expires = Column(DateTime, nullable=True)
+
+    # US-69: forgot-password reset token, same one-time/expiring shape as
+    # confirmation_token above but kept separate so an in-flight password
+    # reset can't be satisfied by replaying an old confirmation link (or
+    # vice versa).
+    reset_token = Column(String, nullable=True)
+    reset_token_expires = Column(DateTime, nullable=True)
+
+    # US-72: profile picture. Mirrors resume_filename/resume_url's shape.
+    profile_picture_filename = Column(String(255), nullable=True)
+    profile_picture_url = Column(String(500), nullable=True)
 
     experience = relationship(
         "WorkExperience", back_populates="profile", cascade="all, delete-orphan"
@@ -236,3 +256,61 @@ class InterviewInvite(Base):
     responded_at = Column(DateTime, nullable=True)
 
     message = relationship("Message", back_populates="interview_invite")
+
+
+class Employer(Base):
+    """A registered employer/company account (US-04, US-05). Everywhere
+    else in the app, `employer_id` stays a bare int backed by the hardcoded
+    EMPLOYER_DIRECTORY / TEST_EMPLOYERS — reconciling those with this real
+    table is a later cleanup (flagged alongside phase 2c)."""
+
+    __tablename__ = "employers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_name = Column(String(150), nullable=False)
+    email = Column(String(150), nullable=False, unique=True, index=True)
+    hashed_password = Column(String, nullable=False)
+    status = Column(String(20), nullable=False, default="active")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    description = Column(Text, nullable=True)
+    industry = Column(String(100), nullable=True)
+    website = Column(String(200), nullable=True)
+    registration_number = Column(String(100), nullable=True)
+    verification_status = Column(String(20), nullable=False, default="pending")
+    verification_document_filename = Column(String(255), nullable=True)
+    verification_document_path = Column(String(500), nullable=True)
+    verification_submitted_at = Column(DateTime, nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+    verified_by_admin_id = Column(Integer, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+
+    # US-73: forgot-password reset token, same shape as SeekerProfile's.
+    reset_token = Column(String, nullable=True)
+    reset_token_expires = Column(DateTime, nullable=True)
+
+
+class Admin(Base):
+    """The single platform administrator role. No `status` column —
+    suspending an admin isn't a requirement here."""
+
+    __tablename__ = "admins"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(150), nullable=False, unique=True, index=True)
+    hashed_password = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Session(Base):
+    """A login session. A plain database row, not a signed/stateless
+    token — `token` is a cryptographically random opaque string
+    (see services/auth.py), looked up on every authenticated request.
+    Logging out is a row delete; that's the whole revocation story."""
+
+    __tablename__ = "sessions"
+
+    token = Column(String, primary_key=True)
+    account_type = Column(String(10), nullable=False)  # "seeker" | "employer" | "admin"
+    account_id = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)

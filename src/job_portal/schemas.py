@@ -84,11 +84,27 @@ def _validate_date_field(value: Optional[str]) -> str:
     return value
 
 
+def _validate_registration_email(value: str) -> str:
+    value = (value or "").strip().lower()
+    if not value:
+        raise ValueError("Email is required.")
+    from email_validator import EmailNotValidError, validate_email
+
+    try:
+        validate_email(value, check_deliverability=False)
+    except EmailNotValidError:
+        raise ValueError("Must be a valid email address, e.g. name@example.com")
+    return value
+
+
 class JobOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     employer_id: int
+    employer_name: str = ""
+    employer_verification_status: str = "unverified"
+    employer_verified: bool = False
     title: str
     description: str
     location: Optional[str] = ""
@@ -115,10 +131,14 @@ class JobOut(BaseModel):
         credibility_reasons: Optional[List[str]] = None,
         match_percentage: Optional[int] = None,
         missing_skills: Optional[List[str]] = None,
+        employer=None,
     ) -> "JobOut":
         return cls(
             id=job.id,
             employer_id=job.employer_id,
+            employer_name=employer.company_name if employer else "",
+            employer_verification_status=(employer.verification_status if employer else "unverified"),
+            employer_verified=bool(employer and employer.verification_status == "approved"),
             title=job.title,
             description=job.description,
             location=job.location,
@@ -374,13 +394,23 @@ class SeekerProfileOut(BaseModel):
     bio: Optional[str] = ""
     resume_filename: Optional[str] = None
     resume_url: Optional[str] = None
+    profile_picture_filename: Optional[str] = None
+    profile_picture_url: Optional[str] = None
     skills: List[str] = []
     experience: List[ExperienceOut] = []
     education: List[EducationOut] = []
 
     @classmethod
     def from_profile(cls, profile) -> "SeekerProfileOut":
-        url = f"/{profile.resume_url}" if profile.resume_url else None
+        # Database values are filesystem paths.  On Windows ``os.path.join``
+        # stores them with backslashes, which are not valid URL separators and
+        # prevents the browser from loading files from FastAPI's /uploads mount.
+        resume_url = f"/{profile.resume_url.replace(chr(92), '/')}" if profile.resume_url else None
+        profile_picture_url = (
+            f"/{profile.profile_picture_url.replace(chr(92), '/')}"
+            if profile.profile_picture_url
+            else None
+        )
         return cls(
             seeker_id=profile.seeker_id,
             full_name=profile.full_name or "",
@@ -388,7 +418,9 @@ class SeekerProfileOut(BaseModel):
             phone=profile.phone or "",
             bio=profile.bio or "",
             resume_filename=profile.resume_filename,
-            resume_url=url,
+            resume_url=resume_url,
+            profile_picture_filename=profile.profile_picture_filename,
+            profile_picture_url=profile_picture_url,
             skills=profile.skills_list(),
             experience=[ExperienceOut.model_validate(e) for e in profile.experience],
             education=[EducationOut.model_validate(e) for e in profile.education],
@@ -436,6 +468,167 @@ class ProfileInfoUpdate(BaseModel):
         return value
 
 
+class SeekerRegisterIn(BaseModel):
+    """Body for POST /api/auth/register/seeker (US-01)."""
+
+    full_name: str = Field(..., max_length=150)
+    email: str = Field(..., max_length=150)
+    password: str = Field(..., min_length=8, max_length=200)
+
+    @field_validator("full_name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        return _validate_person_name(value)
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email_format(cls, value: str) -> str:
+        return _validate_registration_email(value)
+
+
+class EmployerRegisterIn(BaseModel):
+    """Body for POST /api/auth/register/employer (US-04)."""
+
+    company_name: str = Field(..., min_length=1, max_length=150)
+    email: str = Field(..., max_length=150)
+    password: str = Field(..., min_length=8, max_length=200)
+
+    @field_validator("company_name")
+    @classmethod
+    def _company_name_not_blank(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("Company name is required.")
+        return value
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email_format(cls, value: str) -> str:
+        return _validate_registration_email(value)
+
+
+class EmployerProfileOut(BaseModel):
+    """Response shape for GET/PUT /api/employers/me."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_name: str
+    email: str
+    description: Optional[str] = None
+    industry: Optional[str] = None
+    website: Optional[str] = None
+    registration_number: Optional[str] = None
+    verification_status: str = "pending"
+    verification_document_filename: Optional[str] = None
+    rejection_reason: Optional[str] = None
+
+
+class EmployerProfileUpdate(BaseModel):
+    """Body for PUT /api/employers/me. Email is not editable here — it's
+    the login identifier and changing it is out of this story's scope."""
+
+    company_name: str = Field(..., min_length=1, max_length=150)
+    description: Optional[str] = Field(None, max_length=2000)
+    industry: Optional[str] = Field(None, max_length=100)
+    website: Optional[str] = Field(None, max_length=200)
+
+    @field_validator("company_name")
+    @classmethod
+    def _company_name_not_blank(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("Company name is required.")
+        return value
+
+
+class LoginIn(BaseModel):
+    """Body for POST /api/auth/login."""
+
+    email: str = Field(..., max_length=150)
+    password: str = Field(..., max_length=200)
+
+
+class AuthAccountOut(BaseModel):
+    """Response shape for register/login/me — same shape regardless of
+    role, so the frontend can use one handler for all three."""
+
+    role: str  # "seeker" | "employer" | "admin"
+    id: int
+    email: str
+    display_name: str
+    # None for admin (no confirmation concept). True/False for seeker;
+    # employers don't have an email-confirmation story (US-68 is seeker-
+    # only) so this is always True for them — nothing to prompt them to do.
+    email_confirmed: Optional[bool] = None
+
+
+class ConfirmEmailIn(BaseModel):
+    """Body for POST /api/auth/confirm-email (US-68)."""
+
+    token: str = Field(..., min_length=1)
+
+
+class ForgotPasswordIn(BaseModel):
+    """Body for POST /api/auth/forgot-password (US-69, US-73). Always
+    returns the same generic response whether or not the email exists —
+    see routes/auth.py — so this schema doesn't need a role field; both
+    seeker and employer tables are checked."""
+
+    email: str = Field(..., max_length=150)
+
+
+class ResetPasswordIn(BaseModel):
+    """Body for POST /api/auth/reset-password (US-69, US-73)."""
+
+    token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8, max_length=200)
+
+
+class ChangePasswordIn(BaseModel):
+    """Body for POST /api/auth/change-password (US-70, US-74). Requires
+    the current password so a hijacked/left-open session can't be used to
+    lock the real owner out permanently."""
+
+    current_password: str = Field(..., max_length=200)
+    new_password: str = Field(..., min_length=8, max_length=200)
+
+
+class DeleteAccountIn(BaseModel):
+    """Body for DELETE /api/auth/me (US-71). Requires the current
+    password as confirmation — mirrors change-password's reasoning: a
+    left-open session shouldn't be enough to destroy the account."""
+
+    password: str = Field(..., max_length=200)
+
+
+class CompanyDetailOut(BaseModel):
+    """Public, read-only company profile for job seekers (US-19). Deliberately
+    narrower than EmployerProfileOut (the employer's own /me view) — omits
+    email and verification-document/rejection internals that are nobody
+    else's business."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_name: str
+    description: Optional[str] = None
+    industry: Optional[str] = None
+    website: Optional[str] = None
+    is_verified: bool = False
+
+    @classmethod
+    def from_employer(cls, employer) -> "CompanyDetailOut":
+        return cls(
+            id=employer.id,
+            company_name=employer.company_name,
+            description=employer.description,
+            industry=employer.industry,
+            website=employer.website,
+            is_verified=employer.verification_status == "approved",
+        )
+
+
 class ExperienceSuggestion(BaseModel):
     job_title: str = ""
     company_name: str = ""
@@ -467,15 +660,15 @@ def _validate_message_body(value: str) -> str:
 class MessageCreate(BaseModel):
     """Body for POST /api/messages.
 
-    sender_role/sender_id identify who's sending (matches the "acting as"
-    dev-user pattern used elsewhere — real auth arrives Sprint 3).
-    recipient_id is the id of the other party, whose role is the opposite
-    of sender_role. job_id is optional: a message can reference a specific
-    job posting ("regarding this job") or be a general enquiry.
+    sender_role/sender_id used to be client-suppliable here (a "acting as"
+    dev-user stand-in) — now identity comes only from the session
+    (Depends(require_participant_role())), so only the target and content
+    remain client-suppliable. recipient_id is the id of the other party,
+    whose role is the opposite of the logged-in sender's role. job_id is
+    optional: a message can reference a specific job posting ("regarding
+    this job") or be a general enquiry.
     """
 
-    sender_role: str = Field(..., pattern="^(seeker|employer)$")
-    sender_id: int
     recipient_id: int
     body: str = Field(..., min_length=1, max_length=4000)
     job_id: Optional[int] = None
@@ -591,6 +784,58 @@ class ConversationOut(BaseModel):
     unread_count: int = 0
     is_blocked: bool = False
     blocked_by_me: bool = False
+
+
+class MessageContactOut(BaseModel):
+    id: int
+    name: str
+    role: str
+    verification_status: Optional[str] = None
+
+
+class AdminSeekerOut(BaseModel):
+    """Row shape for GET /api/admin/seekers."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    seeker_id: int
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    status: str
+
+
+class AdminEmployerOut(BaseModel):
+    """Row shape for GET /api/admin/employers."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_name: str
+    email: str
+    status: str
+    registration_number: Optional[str] = None
+    description: Optional[str] = None
+    industry: Optional[str] = None
+    website: Optional[str] = None
+    verification_status: str = "pending"
+    verification_document_filename: Optional[str] = None
+    verification_submitted_at: Optional[datetime] = None
+    verified_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+
+
+class EmployerVerificationDecisionIn(BaseModel):
+    reason: Optional[str] = Field(None, max_length=1000)
+
+
+class AdminStatisticsOut(BaseModel):
+    seekers: int
+    employers: int
+    jobs: int
+    open_jobs: int
+    applications: int
+    pending_verifications: int
+    verified_employers: int
 
 
 class ParsedResumeOut(BaseModel):
