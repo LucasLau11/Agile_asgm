@@ -84,6 +84,16 @@ def _validate_date_field(value: Optional[str]) -> str:
     return value
 
 
+ALLOWED_REGISTRATION_EMAIL_DOMAINS = {
+    "gmail.com",
+    "yahoo.com",
+    "outlook.com",
+    "hotmail.com",
+    "icloud.com",
+    "student.tarc.edu.my",
+}
+
+
 def _validate_registration_email(value: str) -> str:
     value = (value or "").strip().lower()
     if not value:
@@ -91,9 +101,15 @@ def _validate_registration_email(value: str) -> str:
     from email_validator import EmailNotValidError, validate_email
 
     try:
-        validate_email(value, check_deliverability=False)
+        info = validate_email(value, check_deliverability=False)
     except EmailNotValidError:
         raise ValueError("Must be a valid email address, e.g. name@example.com")
+
+    if info.domain.lower() not in ALLOWED_REGISTRATION_EMAIL_DOMAINS:
+        raise ValueError(
+            "Please use Gmail, Yahoo, Outlook, Hotmail, iCloud, or your "
+            "@student.tarc.edu.my email address."
+        )
     return value
 
 

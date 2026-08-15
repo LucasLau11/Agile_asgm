@@ -76,9 +76,19 @@ def test_register_seeker_allowed_domain_accepted(client):
 
 def test_register_seeker_academic_domain_accepted(client):
     res = client.post("/api/auth/register/seeker", json={
-        "full_name": "Domain Academic", "email": "domain.student@tarc.edu.my", "password": "correcthorse",
+        "full_name": "Domain Academic",
+        "email": "domain.student@student.tarc.edu.my",
+        "password": "correcthorse",
     })
     assert res.status_code == 201
+
+
+def test_register_seeker_unapproved_domain_rejected(client):
+    res = client.post("/api/auth/register/seeker", json={
+        "full_name": "Domain Rejected", "email": "xx@abc.com", "password": "correcthorse",
+    })
+    assert res.status_code == 422
+    assert "student.tarc.edu.my" in res.json()["detail"][0]["msg"]
 
 
 def test_register_employer_allowed_domain_accepted(client):
@@ -88,11 +98,11 @@ def test_register_employer_allowed_domain_accepted(client):
     assert res.status_code == 201
 
 
-def test_register_employer_academic_domain_accepted(client):
+def test_register_employer_unapproved_academic_domain_rejected(client):
     res = client.post("/api/auth/register/employer", json={
         "company_name": "Domain Academic Co", "email": "domain.hr@university.edu", "password": "correcthorse",
     })
-    assert res.status_code == 201
+    assert res.status_code == 422
 
 
 def test_login_success(client):

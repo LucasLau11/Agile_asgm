@@ -8,6 +8,7 @@ beyond that sub-project's original scope to cover the rest of the
 account-management epic.
 """
 
+import logging
 import secrets
 from datetime import datetime, timedelta
 from typing import Optional
@@ -40,10 +41,11 @@ from job_portal.services.auth import (
     verify_password_or_dummy,
 )
 from job_portal.services.email import (
-    EmailNotConfigured,
     send_confirmation_email,
     send_password_reset_email,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -95,8 +97,10 @@ def _try_send(send_fn, *args) -> None:
     shared link still works."""
     try:
         send_fn(*args)
-    except (EmailNotConfigured, Exception):
-        pass
+    except Exception:
+        # Delivery remains best-effort, but do not hide the reason it failed.
+        # Recipient addresses and credentials are intentionally not logged.
+        logger.exception("Transactional email delivery failed via %s", send_fn.__name__)
 
 
 @router.post("/register/seeker", response_model=AuthAccountOut, status_code=201)
